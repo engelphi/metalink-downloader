@@ -1,0 +1,3 @@
+[workspace]
+members = ["metalink", "metalink-downloader"]
+resolver = "2"
