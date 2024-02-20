@@ -1,6 +1,8 @@
+use iana_registry_enums::{HashFunctionTextualName, OperatingSystemName};
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 // ----------------------------------------------------------------------------
 
@@ -23,30 +25,16 @@ mod rfc3339_to_datetime_utc {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize, PartialEq, Clone)]
-pub enum HashAlgorithm {
-    #[serde(rename = "md5")]
-    Md5,
-    #[serde(rename = "sha-1")]
-    Sha1,
-    #[serde(rename = "sha-256")]
-    Sha256,
-    #[serde(rename = "$text")]
-    Other(String),
-}
-
-// ----------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct Hash {
     #[serde(rename = "@type")]
-    r#type: Option<HashAlgorithm>,
+    r#type: Option<HashFunctionTextualName>,
     #[serde(rename = "$text")]
     value: String,
 }
 
 impl Hash {
-    pub fn hash_type(&self) -> Option<HashAlgorithm> {
+    pub fn hash_type(&self) -> Option<HashFunctionTextualName> {
         self.r#type.clone()
     }
 
@@ -92,10 +80,48 @@ impl FileUrl {
 
 // ----------------------------------------------------------------------------
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct MetaUrl {
+    #[validate(range(
+        min = 1,
+        max = 999999,
+        message = "priority needs to be between 1 and 999999"
+    ))]
+    #[serde(rename = "@priority")]
+    priority: Option<u32>,
+    // TODO needs validation for valid MIME type or the string torrent of bittorrent urls
+    #[serde(rename = "@mediatype")]
+    media_type: String,
+    #[serde(rename = "@name")]
+    name: Option<String>,
+    #[serde(rename = "$text")]
+    url: url::Url,
+}
+
+impl MetaUrl {
+    pub fn priority(&self) -> Option<u32> {
+        self.priority.clone()
+    }
+
+    pub fn mediatype(&self) -> &String {
+        &self.media_type
+    }
+
+    pub fn name(&self) -> Option<&String> {
+        self.name.as_ref()
+    }
+
+    pub fn url(&self) -> &url::Url {
+        &self.url
+    }
+}
+
+// ----------------------------------------------------------------------------
+
 #[derive(Debug, Deserialize)]
 pub struct Pieces {
     #[serde(rename = "@type")]
-    r#type: HashAlgorithm,
+    r#type: HashFunctionTextualName,
     #[serde(rename = "@length")]
     length: u64,
     #[serde(default, rename = "$value")]
@@ -103,7 +129,7 @@ pub struct Pieces {
 }
 
 impl Pieces {
-    pub fn hash_type(&self) -> HashAlgorithm {
+    pub fn hash_type(&self) -> HashFunctionTextualName {
         self.r#type.clone()
     }
 
@@ -119,11 +145,133 @@ impl Pieces {
 // ----------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+pub struct Publisher {
+    #[serde(rename = "@name")]
+    name: String,
+    #[serde(rename = "@url")]
+    url: Option<url::Url>,
+}
+
+impl Publisher {
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn url(&self) -> Option<&url::Url> {
+        self.url.as_ref()
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct Signature {
+    // TODO add validation: needs to be MIME type describing the signature type
+    #[serde(rename = "@mediatype")]
+    media_type: String,
+    #[serde(rename = "$text")]
+    signature: String,
+}
+
+impl Signature {
+    pub fn media_type(&self) -> &String {
+        &self.media_type
+    }
+
+    pub fn signature(&self) -> &String {
+        &self.signature
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct OS {
+    #[serde(rename = "$text")]
+    name: OperatingSystemName,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct File {
     #[serde(rename = "@name")]
     name: String,
+    copyright: Option<String>,
     description: Option<String>,
+    hash: Option<Vec<Hash>>,
+    identity: Option<String>,
+    language: Option<Vec<String>>,
+    logo: Option<url::Url>,
+    metaurl: Option<Vec<MetaUrl>>,
+    // TODO needs validation: values need to be IANA registry "Operating System Names"
+    os: Option<Vec<OS>>,
     pieces: Option<Pieces>,
+    publisher: Option<Publisher>,
+    signature: Option<Signature>,
+    size: Option<u64>,
+    urls: Option<Vec<FileUrl>>,
+    version: Option<String>,
+}
+
+impl File {
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn copyright(&self) -> Option<&String> {
+        self.copyright.as_ref()
+    }
+
+    pub fn description(&self) -> Option<&String> {
+        self.description.as_ref()
+    }
+
+    pub fn hashes(&self) -> Option<&Vec<Hash>> {
+        self.hash.as_ref()
+    }
+
+    pub fn identity(&self) -> Option<&String> {
+        self.identity.as_ref()
+    }
+
+    pub fn languages(&self) -> Option<&Vec<String>> {
+        self.language.as_ref()
+    }
+
+    pub fn logo(&self) -> Option<&url::Url> {
+        self.logo.as_ref()
+    }
+
+    pub fn meta_urls(&self) -> Option<&Vec<MetaUrl>> {
+        self.metaurl.as_ref()
+    }
+
+    pub fn oses(&self) -> Option<&Vec<OS>> {
+        self.os.as_ref()
+    }
+
+    pub fn pieces(&self) -> Option<&Pieces> {
+        self.pieces.as_ref()
+    }
+
+    pub fn publisher(&self) -> Option<&Publisher> {
+        self.publisher.as_ref()
+    }
+
+    pub fn signature(&self) -> Option<&Signature> {
+        self.signature.as_ref()
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.size.clone()
+    }
+
+    pub fn urls(&self) -> Option<&Vec<FileUrl>> {
+        self.urls.as_ref()
+    }
+
+    pub fn version(&self) -> Option<&String> {
+        self.version.as_ref()
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -202,7 +350,7 @@ mod tests {
 
         let hash: Hash = from_str(HASH).unwrap();
 
-        assert_eq!(hash.hash_type(), Some(HashAlgorithm::Sha1));
+        assert_eq!(hash.hash_type(), Some(HashFunctionTextualName::Sha1));
         assert_eq!(hash.value(), String::from("abc"));
     }
 
@@ -260,7 +408,7 @@ mod tests {
         "#;
 
         let pieces: Pieces = from_str(PIECES).unwrap();
-        assert_eq!(pieces.hash_type(), HashAlgorithm::Sha1);
+        assert_eq!(pieces.hash_type(), HashFunctionTextualName::Sha1);
         assert_eq!(pieces.length(), 50);
         assert_eq!(
             *pieces.hashes(),
@@ -275,5 +423,49 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn read_file() {
+        const FILE: &str = r#"
+            <file name="abc/def">
+                <hash type="sha-1">abc</hash>
+                <hash type="sha-256">def</hash>
+                <hash type="sha-512">ghi</hash>
+                <description>Description</description>
+                <copyright>Copyright</copyright>
+                <identity>Test</identity>
+                <language>German</language>
+                <language>USA</language>
+                <logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</logo>
+                <metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</metaurl>
+                <os>MACOS</os>
+                <os>LINUX</os>
+                <pieces type="sha-1" length="50">
+                    <hash>abc</hash>
+                    <hash>def</hash>
+                </pieces>
+                <publisher name="Company Inc." url="https://www.google.com" />
+                <signature mediatype="application/pgp-signature">
+                   -----BEGIN PGP SIGNATURE-----
+                   Version: GnuPG v1.4.10 (GNU/Linux)
+
+                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
+                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
+                   =ggAf
+                   -----END PGP SIGNATURE-----
+                </signature>
+                <size>
+                    50
+                </size>
+                <url priority="1" location="de">https://www.google.de</url>
+                <url priority="1" location="us">https://www.google.com</url>
+                <version>1.0.0</version>
+            </file>
+        "#;
+
+        let file: File = from_str(FILE).unwrap();
+        assert_eq!(*file.name(), String::from("abc/def"));
+        println!("{:#?}", file);
     }
 }
