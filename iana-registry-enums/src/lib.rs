@@ -93,6 +93,12 @@ impl Into<&'static str> for HashFunctionTextualName {
     }
 }
 
+impl std::fmt::Display for HashFunctionTextualName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Into::<&'static str>::into(*self))
+    }
+}
+
 // ================================================================================================
 /// Represents list of operation systems as defined by IANA Operating System Names
 /// registry: https://www.iana.org/assignments/operating-system-names/operating-system-names.xhtml
@@ -1064,5 +1070,11 @@ impl Into<&'static str> for OperatingSystemName {
             OperatingSystemName::XDE => "XDE",
             OperatingSystemName::Xenix => "XENIX",
         }
+    }
+}
+
+impl std::fmt::Display for OperatingSystemName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Into::<&'static str>::into(*self))
     }
 }

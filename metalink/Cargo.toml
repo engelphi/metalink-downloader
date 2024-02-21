@@ -12,3 +12,6 @@ serde = { version = "1", features = ["derive"] }
 url = { version = "2.5", features = ["serde"] }
 validator = { version = "0.16", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
+mime = "0.3"
+serde_with = "3"
+thiserror = "1"

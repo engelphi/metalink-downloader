@@ -2,7 +2,18 @@ use iana_registry_enums::{HashFunctionTextualName, OperatingSystemName};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 use validator::Validate;
+
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, thiserror::Error)]
+pub enum MetalinkParseError {
+    #[error("Failed to parse mediatype")]
+    MediaTypeParseError(#[from] mime::FromStrError),
+    #[error("Failed to parse url")]
+    UrlParseError(#[from] url::ParseError),
+}
 
 // ----------------------------------------------------------------------------
 
@@ -45,7 +56,7 @@ impl Hash {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, PartialEq)]
 pub struct FileUrl {
     #[validate(range(
         min = 1,
@@ -79,8 +90,37 @@ impl FileUrl {
 }
 
 // ----------------------------------------------------------------------------
+#[derive(Debug, PartialEq)]
+pub enum TorrentOrMime {
+    Torrent,
+    Mime(mime::Mime),
+}
 
-#[derive(Debug, Deserialize, Validate)]
+impl std::fmt::Display for TorrentOrMime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TorrentOrMime::Torrent => write!(f, "torrent"),
+            TorrentOrMime::Mime(mime) => write!(f, "{}", mime),
+        }
+    }
+}
+
+impl std::str::FromStr for TorrentOrMime {
+    type Err = MetalinkParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.to_lowercase() == String::from("torrent") {
+            return Ok(Self::Torrent);
+        }
+
+        Ok(Self::Mime(s.parse::<mime::Mime>()?))
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+#[serde_as()]
+#[derive(Debug, Deserialize, Validate, PartialEq)]
 pub struct MetaUrl {
     #[validate(range(
         min = 1,
@@ -90,8 +130,9 @@ pub struct MetaUrl {
     #[serde(rename = "@priority")]
     priority: Option<u32>,
     // TODO needs validation for valid MIME type or the string torrent of bittorrent urls
+    #[serde_as(as = "DisplayFromStr")]
     #[serde(rename = "@mediatype")]
-    media_type: String,
+    media_type: TorrentOrMime,
     #[serde(rename = "@name")]
     name: Option<String>,
     #[serde(rename = "$text")]
@@ -103,7 +144,7 @@ impl MetaUrl {
         self.priority.clone()
     }
 
-    pub fn mediatype(&self) -> &String {
+    pub fn mediatype(&self) -> &TorrentOrMime {
         &self.media_type
     }
 
@@ -118,7 +159,7 @@ impl MetaUrl {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Pieces {
     #[serde(rename = "@type")]
     r#type: HashFunctionTextualName,
@@ -144,7 +185,7 @@ impl Pieces {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Publisher {
     #[serde(rename = "@name")]
     name: String,
@@ -163,18 +204,19 @@ impl Publisher {
 }
 
 // ----------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
+#[serde_as]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Signature {
     // TODO add validation: needs to be MIME type describing the signature type
     #[serde(rename = "@mediatype")]
-    media_type: String,
+    #[serde_as(as = "DisplayFromStr")]
+    media_type: mime::Mime,
     #[serde(rename = "$text")]
     signature: String,
 }
 
 impl Signature {
-    pub fn media_type(&self) -> &String {
+    pub fn media_type(&self) -> &mime::Mime {
         &self.media_type
     }
 
@@ -185,11 +227,19 @@ impl Signature {
 
 // ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct OS {
     #[serde(rename = "$text")]
     name: OperatingSystemName,
 }
+
+impl OS {
+    pub fn name(&self) -> OperatingSystemName {
+        self.name
+    }
+}
+
+// ----------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 pub struct File {
@@ -208,7 +258,7 @@ pub struct File {
     publisher: Option<Publisher>,
     signature: Option<Signature>,
     size: Option<u64>,
-    urls: Option<Vec<FileUrl>>,
+    url: Option<Vec<FileUrl>>,
     version: Option<String>,
 }
 
@@ -266,7 +316,7 @@ impl File {
     }
 
     pub fn urls(&self) -> Option<&Vec<FileUrl>> {
-        self.urls.as_ref()
+        self.url.as_ref()
     }
 
     pub fn version(&self) -> Option<&String> {
@@ -399,6 +449,20 @@ mod tests {
     }
 
     #[test]
+    fn read_publisher() {
+        const PUBLISHER: &str = r#"
+            <publisher name="Company Inc." url="https://www.google.com" />
+        "#;
+
+        let publisher: Publisher = from_str(PUBLISHER).unwrap();
+        assert_eq!(*publisher.name(), String::from("Company Inc."));
+        assert_eq!(
+            *publisher.url().unwrap(),
+            url::Url::parse("https://www.google.com").unwrap()
+        );
+    }
+
+    #[test]
     fn read_pieces() {
         const PIECES: &str = r#"
             <pieces type="sha-1" length="50">
@@ -436,7 +500,7 @@ mod tests {
                 <copyright>Copyright</copyright>
                 <identity>Test</identity>
                 <language>German</language>
-                <language>USA</language>
+                <language>English</language>
                 <logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</logo>
                 <metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</metaurl>
                 <os>MACOS</os>
@@ -466,6 +530,110 @@ mod tests {
 
         let file: File = from_str(FILE).unwrap();
         assert_eq!(*file.name(), String::from("abc/def"));
+        assert_eq!(
+            *file.hashes().unwrap(),
+            vec![
+                Hash {
+                    r#type: Some(HashFunctionTextualName::Sha1),
+                    value: String::from("abc")
+                },
+                Hash {
+                    r#type: Some(HashFunctionTextualName::Sha256),
+                    value: String::from("def")
+                },
+                Hash {
+                    r#type: Some(HashFunctionTextualName::Sha512),
+                    value: String::from("ghi")
+                }
+            ]
+        );
+        assert_eq!(*file.description().unwrap(), String::from("Description"));
+        assert_eq!(*file.copyright().unwrap(), String::from("Copyright"));
+        assert_eq!(*file.identity().unwrap(), String::from("Test"));
+        assert_eq!(
+            *file.languages().unwrap(),
+            vec![String::from("German"), String::from("English")]
+        );
+        assert_eq!(*file.logo().unwrap(), url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap());
+        assert_eq!(
+            *file.meta_urls().unwrap(),
+            vec![MetaUrl {
+                priority: Some(1),
+                media_type: TorrentOrMime::Torrent,
+                name: Some(String::from("test/test2/test.tar.gz")),
+                url: url::Url::parse("https://www.rfc-editor.org/rfc/rfc5854").unwrap(),
+            }]
+        );
+        assert_eq!(
+            *file.oses().unwrap(),
+            vec![
+                OS {
+                    name: OperatingSystemName::MacOS
+                },
+                OS {
+                    name: OperatingSystemName::Linux
+                }
+            ]
+        );
+        assert_eq!(
+            *file.pieces().unwrap(),
+            Pieces {
+                r#type: HashFunctionTextualName::Sha1,
+                length: 50,
+                hashes: vec![
+                    Hash {
+                        r#type: None,
+                        value: String::from("abc")
+                    },
+                    Hash {
+                        r#type: None,
+                        value: String::from("def")
+                    }
+                ]
+            }
+        );
+        assert_eq!(
+            *file.publisher().unwrap(),
+            Publisher {
+                name: String::from("Company Inc."),
+                url: Some(url::Url::parse("https://www.google.com").unwrap())
+            }
+        );
+        assert_eq!(
+            *file.signature().unwrap(),
+            Signature {
+                media_type: mime::Mime::from_str("application/pgp-signature").unwrap(),
+                signature: String::from(
+                    "-----BEGIN PGP SIGNATURE-----
+                   Version: GnuPG v1.4.10 (GNU/Linux)
+
+                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
+                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
+                   =ggAf
+                   -----END PGP SIGNATURE-----"
+                )
+            }
+        );
+        assert_eq!(file.size().unwrap(), 50);
         println!("{:#?}", file);
+        assert_eq!(
+            *file.urls().unwrap(),
+            vec![
+                FileUrl {
+                    priority: Some(1),
+                    location: Some(String::from("de")),
+                    url: url::Url::parse("https://www.google.de").unwrap(),
+                },
+                FileUrl {
+                    priority: Some(1),
+                    location: Some(String::from("us")),
+                    url: url::Url::parse("https://www.google.com").unwrap(),
+                }
+            ]
+        );
+        assert_eq!(*file.version().unwrap(), String::from("1.0.0"));
     }
+
+    #[test]
+    fn parse_full_metalink() {}
 }
