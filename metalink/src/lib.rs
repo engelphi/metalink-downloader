@@ -4,8 +4,8 @@
 
 pub use crate::error::MetalinkError;
 pub use crate::models::{
-    File, FileBuilder, FileUrl, Hash, MetaUrl, Metalink, Origin, Pieces, Publisher, Signature,
-    TorrentOrMime, OS,
+    Copyright, Description, File, FileBuilder, FileUrl, Hash, Identity, Language, Logo, MetaUrl,
+    Metalink, Origin, Pieces, Publisher, Signature, Size, TorrentOrMime, Version, OS,
 };
 
 mod error;

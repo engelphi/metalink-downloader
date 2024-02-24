@@ -1,4 +1,7 @@
-use crate::{FileUrl, Hash, MetaUrl, MetalinkError, Pieces, Publisher, Signature, OS};
+use crate::{
+    Copyright, Description, FileUrl, Hash, Identity, Language, Logo, MetaUrl, MetalinkError,
+    Pieces, Publisher, Signature, Size, Version, OS,
+};
 use serde::{Deserialize, Serialize};
 
 /// Representation of the metalink:file element according to
@@ -7,20 +10,34 @@ use serde::{Deserialize, Serialize};
 pub struct File {
     #[serde(rename = "@name")]
     name: String,
-    copyright: Option<String>,
-    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    copyright: Option<Copyright>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<Description>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hash: Option<Vec<Hash>>,
-    identity: Option<String>,
-    language: Option<Vec<String>>,
-    logo: Option<url::Url>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identity: Option<Identity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language: Option<Vec<Language>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    logo: Option<Logo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     metaurl: Option<Vec<MetaUrl>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     os: Option<Vec<OS>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pieces: Option<Pieces>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     publisher: Option<Publisher>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     signature: Option<Signature>,
-    size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<Size>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<Vec<FileUrl>>,
-    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<Version>,
 }
 
 impl File {
@@ -30,12 +47,12 @@ impl File {
     }
 
     /// Returns the copyright of the file element if set
-    pub fn copyright(&self) -> Option<&String> {
+    pub fn copyright(&self) -> Option<&Copyright> {
         self.copyright.as_ref()
     }
 
     /// Returns the description of the file element if set
-    pub fn description(&self) -> Option<&String> {
+    pub fn description(&self) -> Option<&Description> {
         self.description.as_ref()
     }
 
@@ -45,17 +62,17 @@ impl File {
     }
 
     /// Returns the identity of the file element if set
-    pub fn identity(&self) -> Option<&String> {
+    pub fn identity(&self) -> Option<&Identity> {
         self.identity.as_ref()
     }
 
     /// Returns the languages of the file element if set
-    pub fn languages(&self) -> Option<&Vec<String>> {
+    pub fn languages(&self) -> Option<&Vec<Language>> {
         self.language.as_ref()
     }
 
     /// Returns the logo of the file element if set
-    pub fn logo(&self) -> Option<&url::Url> {
+    pub fn logo(&self) -> Option<&Logo> {
         self.logo.as_ref()
     }
 
@@ -85,8 +102,8 @@ impl File {
     }
 
     /// Returns the size of the file referenced by the file element if set
-    pub fn size(&self) -> Option<u64> {
-        self.size
+    pub fn size(&self) -> Option<&Size> {
+        self.size.as_ref()
     }
 
     /// Returns the urls of the file element if set
@@ -95,7 +112,7 @@ impl File {
     }
 
     /// Returns the version of the file element if set
-    pub fn version(&self) -> Option<&String> {
+    pub fn version(&self) -> Option<&Version> {
         self.version.as_ref()
     }
 }
@@ -104,20 +121,20 @@ impl File {
 #[derive(Debug, Default)]
 pub struct FileBuilder {
     name: Option<String>,
-    copyright: Option<String>,
-    description: Option<String>,
+    copyright: Option<Copyright>,
+    description: Option<Description>,
     hash: Option<Vec<Hash>>,
-    identity: Option<String>,
-    language: Option<Vec<String>>,
-    logo: Option<url::Url>,
+    identity: Option<Identity>,
+    language: Option<Vec<Language>>,
+    logo: Option<Logo>,
     metaurl: Option<Vec<MetaUrl>>,
     os: Option<Vec<OS>>,
     pieces: Option<Pieces>,
     publisher: Option<Publisher>,
     signature: Option<Signature>,
-    size: Option<u64>,
+    size: Option<Size>,
     url: Option<Vec<FileUrl>>,
-    version: Option<String>,
+    version: Option<Version>,
 }
 
 impl FileBuilder {
@@ -200,14 +217,14 @@ impl FileBuilder {
     }
 
     /// Set the copyright of the file element
-    pub fn with_copyright(mut self, copyright: &str) -> Self {
-        self.copyright = Some(String::from(copyright));
+    pub fn with_copyright(mut self, copyright: Copyright) -> Self {
+        self.copyright = Some(copyright);
         self
     }
 
     /// Set the description of the file element
-    pub fn with_description(mut self, description: &str) -> Self {
-        self.description = Some(String::from(description));
+    pub fn with_description(mut self, description: Description) -> Self {
+        self.description = Some(description);
         self
     }
 
@@ -218,19 +235,19 @@ impl FileBuilder {
     }
 
     /// Set the identity of the file element
-    pub fn with_identity(mut self, identity: &str) -> Self {
-        self.identity = Some(String::from(identity));
+    pub fn with_identity(mut self, identity: Identity) -> Self {
+        self.identity = Some(identity);
         self
     }
 
     /// Sets the languages of the file element
-    pub fn with_languages(mut self, languages: Vec<String>) -> Self {
+    pub fn with_languages(mut self, languages: Vec<Language>) -> Self {
         self.language = Some(languages);
         self
     }
 
     /// Set the logo of the file element
-    pub fn with_logo(mut self, logo: url::Url) -> Self {
+    pub fn with_logo(mut self, logo: Logo) -> Self {
         self.logo = Some(logo);
         self
     }
@@ -266,7 +283,7 @@ impl FileBuilder {
     }
 
     /// Sets the size of the file element
-    pub fn with_size(mut self, size: u64) -> Self {
+    pub fn with_size(mut self, size: Size) -> Self {
         self.size = Some(size);
         self
     }
@@ -278,8 +295,8 @@ impl FileBuilder {
     }
 
     /// Sets the version of the file element
-    pub fn with_version(mut self, version: &str) -> Self {
-        self.version = Some(String::from(version));
+    pub fn with_version(mut self, version: Version) -> Self {
+        self.version = Some(version);
         self
     }
 }
@@ -290,7 +307,7 @@ mod tests {
     use crate::TorrentOrMime;
     use iana_registry_enums::{HashFunctionTextualName, OperatingSystemName};
 
-    use quick_xml::de::from_str;
+    use quick_xml::{de::from_str, se::to_string};
 
     use std::str::FromStr;
 
@@ -343,14 +360,17 @@ mod tests {
                 Hash::new(Some(HashFunctionTextualName::Sha512), "ghi")
             ]
         );
-        assert_eq!(*file.description().unwrap(), String::from("Description"));
-        assert_eq!(*file.copyright().unwrap(), String::from("Copyright"));
-        assert_eq!(*file.identity().unwrap(), String::from("Test"));
+        assert_eq!(
+            *file.description().unwrap(),
+            Description::new("Description")
+        );
+        assert_eq!(*file.copyright().unwrap(), Copyright::new("Copyright"));
+        assert_eq!(*file.identity().unwrap(), Identity::new("Test"));
         assert_eq!(
             *file.languages().unwrap(),
-            vec![String::from("German"), String::from("English")]
+            vec![Language::new("German"), Language::new("English")]
         );
-        assert_eq!(*file.logo().unwrap(), url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap());
+        assert_eq!(*file.logo().unwrap(), Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()));
         assert_eq!(
             *file.meta_urls().unwrap(),
             vec![MetaUrl::new(
@@ -395,7 +415,7 @@ mod tests {
                    -----END PGP SIGNATURE-----"
             )
         );
-        assert_eq!(file.size().unwrap(), 50);
+        assert_eq!(*file.size().unwrap(), Size::new(50));
         assert_eq!(
             *file.urls().unwrap(),
             vec![
@@ -411,7 +431,7 @@ mod tests {
                 )
             ]
         );
-        assert_eq!(*file.version().unwrap(), String::from("1.0.0"));
+        assert_eq!(*file.version().unwrap(), Version::new("1.0.0"));
 
         let expected_file = FileBuilder::new()
             .with_name("abc/def")
@@ -420,11 +440,11 @@ mod tests {
                 Hash::new(Some(HashFunctionTextualName::Sha256), "def"),
                 Hash::new(Some(HashFunctionTextualName::Sha512), "ghi"),
             ])
-            .with_description("Description")
-            .with_copyright("Copyright")
-            .with_identity("Test")
-            .with_languages(vec![String::from("German"), String::from("English")])
-            .with_logo(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap())
+            .with_description(Description::new("Description"))
+            .with_copyright(Copyright::new("Copyright"))
+            .with_identity(Identity::new("Test"))
+            .with_languages(vec![Language::new("German"), Language::new("English")])
+            .with_logo(Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()))
             .with_metaurls(vec![MetaUrl::new(
                 url::Url::parse("https://www.rfc-editor.org/rfc/rfc5854").unwrap(),
                 TorrentOrMime::Torrent,
@@ -466,11 +486,113 @@ mod tests {
                     Some(isocountry::CountryCode::USA)
                 )
             ])
-            .with_size(50)
-            .with_version("1.0.0")
+            .with_size(Size::new(50))
+            .with_version(Version::new("1.0.0"))
             .build()
             .unwrap();
 
         assert_eq!(file, expected_file);
+    }
+
+    #[test]
+    fn write_full_file_works() {
+        let file = FileBuilder::new()
+            .with_name("abc/def")
+            .with_hashes(vec![
+                Hash::new(Some(HashFunctionTextualName::Sha1), "abc"),
+                Hash::new(Some(HashFunctionTextualName::Sha256), "def"),
+                Hash::new(Some(HashFunctionTextualName::Sha512), "ghi"),
+            ])
+            .with_description(Description::new("Description"))
+            .with_copyright(Copyright::new("Copyright"))
+            .with_identity(Identity::new("Test"))
+            .with_languages(vec![Language::new("German"), Language::new("English")])
+            .with_logo(Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()))
+            .with_metaurls(vec![MetaUrl::new(
+                url::Url::parse("https://www.rfc-editor.org/rfc/rfc5854").unwrap(),
+                TorrentOrMime::Torrent,
+                Some(1),
+                Some(String::from("test/test2/test.tar.gz"))
+            )])
+            .with_oses(vec![
+                OS::new(OperatingSystemName::MacOS),
+                OS::new(OperatingSystemName::Linux),
+            ])
+            .with_pieces(Pieces::new(
+                HashFunctionTextualName::Sha1,
+                50,
+                vec![Hash::new(None, "abc"), Hash::new(None, "def")]
+            ))
+            .with_publisher(Publisher::new_with_url(
+                "Company Inc.",
+                url::Url::parse("https://www.google.com").unwrap()
+            ))
+            .with_signature(Signature::new(
+                mime::Mime::from_str("application/pgp-signature").unwrap(),
+                "-----BEGIN PGP SIGNATURE-----
+                   Version: GnuPG v1.4.10 (GNU/Linux)
+
+                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
+                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
+                   =ggAf
+                   -----END PGP SIGNATURE-----")
+            )
+            .with_urls(vec![
+                FileUrl::new(
+                    url::Url::parse("https://www.google.de").unwrap(),
+                    Some(1),
+                    Some(isocountry::CountryCode::DEU)
+                ),
+                FileUrl::new(
+                    url::Url::parse("https://www.google.com").unwrap(),
+                    Some(1),
+                    Some(isocountry::CountryCode::USA)
+                )
+            ])
+            .with_size(Size::new(50))
+            .with_version(Version::new("1.0.0"))
+            .build()
+            .unwrap();
+
+        let expected = String::from(
+            r#"
+            <File name="abc/def">
+                <Hash type="sha-1">abc</Hash>
+                <Hash type="sha-256">def</Hash>
+                <Hash type="sha-512">ghi</Hash>
+                <Description>Description</Description>
+                <Copyright>Copyright</Copyright>
+                <Identity>Test</Identity>
+                <Language>German</Language>
+                <Language>English</Language>
+                <Logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</Logo>
+                <Metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</Metaurl>
+                <OS>MACOS</OS>
+                <OS>LINUX</OS>
+                <Pieces type="sha-1" length="50">
+                    <hash>abc</hash>
+                    <hash>def</hash>
+                </Pieces>
+                <Publisher name="Company Inc." url="https://www.google.com" />
+                <Signature mediatype="application/pgp-signature">
+                   -----BEGIN PGP SIGNATURE-----
+                   Version: GnuPG v1.4.10 (GNU/Linux)
+
+                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
+                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
+                   =ggAf
+                   -----END PGP SIGNATURE-----
+                </Signature>
+                <Size>
+                    50
+                </Size>
+                <Url priority="1" location="de">https://www.google.de</url>
+                <Url priority="1" location="us">https://www.google.com</url>
+                <Version>1.0.0</Version>
+            </File>
+        "#,
+        );
+
+        assert_eq!(to_string::<File>(&file).unwrap(), expected);
     }
 }

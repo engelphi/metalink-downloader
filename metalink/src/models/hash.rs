@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 /// Representation of the metalink:hash element according to
 /// [RFC5854 Section 4.2.4](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.4)
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename(serialize = "Hash"))]
 pub struct Hash {
-    #[serde(rename = "@type")]
+    #[serde(rename = "@type", skip_serializing_if = "Option::is_none")]
     r#type: Option<HashFunctionTextualName>,
     #[serde(rename = "$text")]
     value: String,
@@ -35,7 +36,7 @@ impl Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
+    use quick_xml::{de::from_str, se::to_string};
 
     #[test]
     fn read_hash_with_type() {
@@ -59,5 +60,19 @@ mod tests {
 
         assert_eq!(hash.hash_type(), None);
         assert_eq!(hash.value(), String::from("abc"));
+    }
+
+    #[test]
+    fn write_hash_without_type() {
+        let hash = Hash::new(None, "abc");
+        let expected = String::from(r#"<Hash>abc</Hash>"#);
+        assert_eq!(to_string::<Hash>(&hash).unwrap(), expected);
+    }
+
+    #[test]
+    fn write_hash_with_type() {
+        let hash = Hash::new(Some(HashFunctionTextualName::Sha1), "abc");
+        let expected = String::from(r#"<Hash type="sha-1">abc</Hash>"#);
+        assert_eq!(to_string::<Hash>(&hash).unwrap(), expected);
     }
 }
