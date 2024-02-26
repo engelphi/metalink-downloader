@@ -30,6 +30,14 @@ impl std::str::FromStr for Copyright {
     }
 }
 
+impl std::convert::TryFrom<&str> for Copyright {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,7 +47,7 @@ mod tests {
         const COPYRIGHT: &str = r#"
             <Copyright>Test</Copyright>
         "#;
-        let copyright: Copyright = COPYRIGHT.parse().unwrap();
+        let copyright = Copyright::try_from(COPYRIGHT).unwrap();
         assert_eq!(Copyright::new("Test"), copyright);
         assert_eq!(copyright.copyright(), "Test");
     }

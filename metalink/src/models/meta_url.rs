@@ -71,6 +71,14 @@ impl std::str::FromStr for MetaUrl {
     }
 }
 
+impl std::convert::TryFrom<&str> for MetaUrl {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -83,7 +91,7 @@ mod tests {
             <metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</metaurl>
         "#;
 
-        let meta_url: MetaUrl = METAURL.parse().unwrap();
+        let meta_url = MetaUrl::try_from(METAURL).unwrap();
 
         assert_eq!(
             *meta_url.url(),

@@ -28,6 +28,14 @@ impl std::str::FromStr for Logo {
     }
 }
 
+impl std::convert::TryFrom<&str> for Logo {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,7 +45,7 @@ mod tests {
         const LOGO: &str = r#"
             <Logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</Logo>
         "#;
-        let logo: Logo = LOGO.parse().unwrap();
+        let logo = Logo::try_from(LOGO).unwrap();
         assert_eq!(Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()), logo);
         assert_eq!(*logo.logo(), url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap());
     }

@@ -46,6 +46,14 @@ impl std::str::FromStr for Publisher {
     }
 }
 
+impl std::convert::TryFrom<&str> for Publisher {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -56,7 +64,7 @@ mod test {
             <Publisher name="Company Inc." url="https://www.google.com"/>
         "#;
 
-        let publisher: Publisher = PUBLISHER.parse().unwrap();
+        let publisher = Publisher::try_from(PUBLISHER).unwrap();
         assert_eq!(
             Publisher::new_with_url(
                 "Company Inc.",

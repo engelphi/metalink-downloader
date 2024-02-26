@@ -60,6 +60,14 @@ impl std::str::FromStr for FileUrl {
     }
 }
 
+impl std::convert::TryFrom<&str> for FileUrl {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,7 +79,7 @@ mod tests {
             <url>https://www.rfc-editor.org/rfc/rfc5854</url>
         "#;
 
-        let url: FileUrl = URL.parse().unwrap();
+        let url = FileUrl::try_from(URL).unwrap();
         assert_eq!(url.location(), None);
         assert_eq!(url.priority(), None);
         assert_eq!(
@@ -87,7 +95,7 @@ mod tests {
             <url priority="1" location="us">https://www.rfc-editor.org/rfc/rfc5854</url>
         "#;
 
-        let url: FileUrl = URL.parse().unwrap();
+        let url = FileUrl::try_from(URL).unwrap();
         assert_eq!(*url.location().unwrap(), isocountry::CountryCode::USA);
         assert_eq!(url.priority(), Some(1));
         assert_eq!(

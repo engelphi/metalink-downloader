@@ -42,6 +42,14 @@ impl std::str::FromStr for Signature {
     }
 }
 
+impl std::convert::TryFrom<&str> for Signature {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -61,7 +69,7 @@ mod tests {
             </signature>
         "#;
 
-        let signature: Signature = SIGNATURE.parse().unwrap();
+        let signature = Signature::try_from(SIGNATURE).unwrap();
         assert_eq!(
             mime::Mime::from_str("application/pgp-signature").unwrap(),
             *signature.media_type()

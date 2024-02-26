@@ -28,6 +28,14 @@ impl std::str::FromStr for OS {
     }
 }
 
+impl std::convert::TryFrom<&str> for OS {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -41,7 +49,7 @@ mod tests {
     #[test]
     fn read_works() {
         const OS: &str = r#"<OS>MACOS</OS>"#;
-        let os: OS = OS.parse().unwrap();
+        let os = OS::try_from(OS).unwrap();
         assert_eq!(os.name(), OperatingSystemName::MacOS);
     }
 }

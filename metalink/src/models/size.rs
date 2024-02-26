@@ -28,6 +28,14 @@ impl std::str::FromStr for Size {
     }
 }
 
+impl std::convert::TryFrom<&str> for Size {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,7 +45,7 @@ mod tests {
         const SIZE: &str = r#"
             <Size>50</Size>
         "#;
-        let size: Size = SIZE.parse().unwrap();
+        let size = Size::try_from(SIZE).unwrap();
         assert_eq!(Size::new(50), size);
         assert_eq!(size.size(), 50);
     }

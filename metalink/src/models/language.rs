@@ -30,6 +30,14 @@ impl std::str::FromStr for Language {
     }
 }
 
+impl std::convert::TryFrom<&str> for Language {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,7 +47,7 @@ mod tests {
         const LANGUAGE: &str = r#"
             <Language>Test</Language>
         "#;
-        let language: Language = LANGUAGE.parse().unwrap();
+        let language = Language::try_from(LANGUAGE).unwrap();
         assert_eq!(Language::new("Test"), language);
         assert_eq!(language.language(), "Test");
     }

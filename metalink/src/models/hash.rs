@@ -40,6 +40,14 @@ impl std::str::FromStr for Hash {
     }
 }
 
+impl std::convert::TryFrom<&str> for Hash {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -50,7 +58,7 @@ mod tests {
             <hash type="sha-1">abc</hash>
         "#;
 
-        let hash: Hash = HASH.parse().unwrap();
+        let hash = Hash::try_from(HASH).unwrap();
 
         assert_eq!(hash.hash_type(), Some(HashFunctionTextualName::Sha1));
         assert_eq!(hash.value(), String::from("abc"));
@@ -62,7 +70,7 @@ mod tests {
             <hash>abc</hash>
         "#;
 
-        let hash: Hash = HASH.parse().unwrap();
+        let hash = Hash::try_from(HASH).unwrap();
 
         assert_eq!(hash.hash_type(), None);
         assert_eq!(hash.value(), String::from("abc"));

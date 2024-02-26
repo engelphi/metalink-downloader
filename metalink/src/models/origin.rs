@@ -35,6 +35,14 @@ impl std::str::FromStr for Origin {
     }
 }
 
+impl std::convert::TryFrom<&str> for Origin {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -47,7 +55,7 @@ mod tests {
             <origin dynamic="true">https://www.google.com</origin>
         "#;
 
-        let origin: Origin = DYNAMIC.parse().unwrap();
+        let origin = Origin::try_from(DYNAMIC).unwrap();
         assert_eq!(origin.is_dynamic(), true);
         assert_eq!(
             *origin.url(),
@@ -61,7 +69,7 @@ mod tests {
             <origin dynamic="false">https://www.google.com</origin>
         "#;
 
-        let origin: Origin = DYNAMIC.parse().unwrap();
+        let origin = Origin::try_from(DYNAMIC).unwrap();
         assert_eq!(origin.is_dynamic(), false);
         assert_eq!(
             *origin.url(),
@@ -75,7 +83,7 @@ mod tests {
             <origin>https://www.google.com</origin>
         "#;
 
-        let origin: Origin = DYNAMIC.parse().unwrap();
+        let origin = Origin::try_from(DYNAMIC).unwrap();
         assert_eq!(origin.is_dynamic(), false);
         assert_eq!(
             *origin.url(),

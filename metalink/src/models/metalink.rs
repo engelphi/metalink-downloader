@@ -4,7 +4,7 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::{utils::*, MetalinkError};
+use crate::{utils::rfc3339_to_datetime_utc, MetalinkError};
 use crate::{File, Origin};
 
 /// Representation of the metalink:metalink element according to
@@ -71,6 +71,13 @@ impl FromStr for Metalink {
     }
 }
 
+impl std::convert::TryFrom<&str> for Metalink {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
 // ----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -112,7 +119,7 @@ mod tests {
                 </file>
             </metalink>
         "#;
-        let metalink: Metalink = METALINK.parse().unwrap();
+        let metalink = Metalink::try_from(METALINK).unwrap();
 
         let expected_generator = Some(String::from("TestGenerator"));
         let expected_published = Some(DateTime::from_naive_utc_and_offset(
@@ -205,7 +212,7 @@ mod tests {
                 </file>
             </metalink>
         "#;
-        let metalink: Metalink = from_str(METALINK).unwrap();
+        let metalink = Metalink::try_from(METALINK).unwrap();
         let expected_files = vec![FileBuilder::new()
             .with_name("abc/def")
             .with_hashes(vec![

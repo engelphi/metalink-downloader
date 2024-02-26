@@ -52,6 +52,14 @@ impl std::str::FromStr for Pieces {
     }
 }
 
+impl std::convert::TryFrom<&str> for Pieces {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,7 +73,7 @@ mod tests {
             </pieces>
         "#;
 
-        let pieces: Pieces = PIECES.parse().unwrap();
+        let pieces = Pieces::try_from(PIECES).unwrap();
         assert_eq!(pieces.hash_type(), HashFunctionTextualName::Sha1);
         assert_eq!(pieces.length(), 50);
         assert_eq!(

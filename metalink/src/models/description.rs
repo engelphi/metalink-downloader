@@ -30,6 +30,14 @@ impl std::str::FromStr for Description {
     }
 }
 
+impl std::convert::TryFrom<&str> for Description {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,7 +47,7 @@ mod tests {
         const DESCRIPTION: &str = r#"
             <Description>Test</Description>
         "#;
-        let description: Description = DESCRIPTION.parse().unwrap();
+        let description = Description::try_from(DESCRIPTION).unwrap();
         assert_eq!(Description::new("Test"), description);
         assert_eq!(description.description(), "Test");
     }

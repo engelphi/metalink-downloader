@@ -30,6 +30,14 @@ impl std::str::FromStr for Version {
     }
 }
 
+impl std::convert::TryFrom<&str> for Version {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,7 +47,7 @@ mod tests {
         const VERSION: &str = r#"
             <Version>1.0.0</Version>
         "#;
-        let version: Version = VERSION.parse().unwrap();
+        let version = Version::try_from(VERSION).unwrap();
         assert_eq!(Version::new("1.0.0"), version);
         assert_eq!(version.version(), "1.0.0");
     }

@@ -30,6 +30,14 @@ impl std::str::FromStr for Identity {
     }
 }
 
+impl std::convert::TryFrom<&str> for Identity {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,7 +47,7 @@ mod tests {
         const IDENTITY: &str = r#"
             <Identity>Test</Identity>
         "#;
-        let identity: Identity = IDENTITY.parse().unwrap();
+        let identity = Identity::try_from(IDENTITY).unwrap();
         assert_eq!(Identity::new("Test"), identity);
         assert_eq!(identity.identity(), "Test");
     }

@@ -30,6 +30,14 @@ impl std::str::FromStr for TorrentOrMime {
     }
 }
 
+impl std::convert::TryFrom<&str> for TorrentOrMime {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +59,18 @@ mod tests {
         );
         assert_eq!(
             "application/json".parse::<TorrentOrMime>().unwrap(),
+            TorrentOrMime::Mime("application/json".parse::<mime::Mime>().unwrap())
+        );
+    }
+
+    #[test]
+    fn test_try_from() {
+        assert_eq!(
+            TorrentOrMime::try_from("torrent").unwrap(),
+            TorrentOrMime::Torrent
+        );
+        assert_eq!(
+            TorrentOrMime::try_from("application/json").unwrap(),
             TorrentOrMime::Mime("application/json".parse::<mime::Mime>().unwrap())
         );
     }

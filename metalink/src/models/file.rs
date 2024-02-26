@@ -111,6 +111,14 @@ impl std::str::FromStr for File {
     }
 }
 
+impl std::convert::TryFrom<&str> for File {
+    type Error = crate::MetalinkError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 /// Helper type for constructing File elements
 #[derive(Debug, Default)]
 pub struct FileBuilder {
@@ -342,7 +350,7 @@ mod tests {
             </file>
         "#;
 
-        let file: File = FILE.parse().unwrap();
+        let file = File::try_from(FILE).unwrap();
         assert_eq!(*file.name(), String::from("abc/def"));
         assert_eq!(
             *file.hashes().unwrap(),
