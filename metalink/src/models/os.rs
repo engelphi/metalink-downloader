@@ -20,10 +20,17 @@ impl OS {
     }
 }
 
+impl std::str::FromStr for OS {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<OS>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn construction_works() {
@@ -34,7 +41,7 @@ mod tests {
     #[test]
     fn read_works() {
         const OS: &str = r#"<OS>MACOS</OS>"#;
-        let os: OS = from_str(OS).unwrap();
+        let os: OS = OS.parse().unwrap();
         assert_eq!(os.name(), OperatingSystemName::MacOS);
     }
 }

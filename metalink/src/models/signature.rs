@@ -34,12 +34,19 @@ impl Signature {
     }
 }
 
+impl std::str::FromStr for Signature {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Signature>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::utils::from_str;
     #[test]
     fn read_signature() {
         const SIGNATURE: &str = r#"
@@ -54,7 +61,7 @@ mod tests {
             </signature>
         "#;
 
-        let signature: Signature = from_str(SIGNATURE).unwrap();
+        let signature: Signature = SIGNATURE.parse().unwrap();
         assert_eq!(
             mime::Mime::from_str("application/pgp-signature").unwrap(),
             *signature.media_type()

@@ -20,17 +20,24 @@ impl Size {
     }
 }
 
+impl std::str::FromStr for Size {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Size>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_size_works() {
         const SIZE: &str = r#"
             <Size>50</Size>
         "#;
-        let size: Size = from_str(SIZE).unwrap();
+        let size: Size = SIZE.parse().unwrap();
         assert_eq!(Size::new(50), size);
         assert_eq!(size.size(), 50);
     }

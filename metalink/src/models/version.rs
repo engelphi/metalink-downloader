@@ -22,17 +22,24 @@ impl Version {
     }
 }
 
+impl std::str::FromStr for Version {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Version>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_version_works() {
         const VERSION: &str = r#"
             <Version>1.0.0</Version>
         "#;
-        let version: Version = from_str(VERSION).unwrap();
+        let version: Version = VERSION.parse().unwrap();
         assert_eq!(Version::new("1.0.0"), version);
         assert_eq!(version.version(), "1.0.0");
     }

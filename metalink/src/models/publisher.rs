@@ -38,10 +38,17 @@ impl Publisher {
     }
 }
 
+impl std::str::FromStr for Publisher {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Publisher>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_full_publisher() {
@@ -49,7 +56,7 @@ mod test {
             <Publisher name="Company Inc." url="https://www.google.com"/>
         "#;
 
-        let publisher: Publisher = from_str(PUBLISHER).unwrap();
+        let publisher: Publisher = PUBLISHER.parse().unwrap();
         assert_eq!(
             Publisher::new_with_url(
                 "Company Inc.",
@@ -69,7 +76,7 @@ mod test {
         const PUBLISHER: &str = r#"
             <Publisher name="Company Inc."/>
         "#;
-        let publisher: Publisher = from_str(PUBLISHER).unwrap();
+        let publisher: Publisher = PUBLISHER.parse().unwrap();
         assert_eq!(Publisher::new("Company Inc.",), publisher);
         assert_eq!(*publisher.name(), String::from("Company Inc."));
         assert_eq!(publisher.url(), None);

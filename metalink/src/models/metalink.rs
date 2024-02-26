@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use anyhow::Context;
 
 use crate::{utils::*, MetalinkError};
 use crate::{File, Origin};
@@ -64,7 +64,7 @@ impl Metalink {
 }
 
 impl FromStr for Metalink {
-    type Err = MetalinkError;
+    type Err = crate::MetalinkError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(crate::utils::from_str::<Metalink>(s)?)

@@ -22,17 +22,24 @@ impl Description {
     }
 }
 
+impl std::str::FromStr for Description {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Description>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_description_works() {
         const DESCRIPTION: &str = r#"
             <Description>Test</Description>
         "#;
-        let description: Description = from_str(DESCRIPTION).unwrap();
+        let description: Description = DESCRIPTION.parse().unwrap();
         assert_eq!(Description::new("Test"), description);
         assert_eq!(description.description(), "Test");
     }

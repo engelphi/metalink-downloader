@@ -22,17 +22,24 @@ impl Language {
     }
 }
 
+impl std::str::FromStr for Language {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Language>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_language_works() {
         const LANGUAGE: &str = r#"
             <Language>Test</Language>
         "#;
-        let language: Language = from_str(LANGUAGE).unwrap();
+        let language: Language = LANGUAGE.parse().unwrap();
         assert_eq!(Language::new("Test"), language);
         assert_eq!(language.language(), "Test");
     }

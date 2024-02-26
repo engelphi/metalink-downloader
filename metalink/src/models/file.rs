@@ -103,6 +103,14 @@ impl File {
     }
 }
 
+impl std::str::FromStr for File {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<File>(s)?)
+    }
+}
+
 /// Helper type for constructing File elements
 #[derive(Debug, Default)]
 pub struct FileBuilder {
@@ -293,8 +301,6 @@ mod tests {
     use crate::TorrentOrMime;
     use iana_registry_enums::{HashFunctionTextualName, OperatingSystemName};
 
-    use crate::utils::from_str;
-
     use std::str::FromStr;
 
     #[test]
@@ -336,7 +342,7 @@ mod tests {
             </file>
         "#;
 
-        let file: File = from_str(FILE).unwrap();
+        let file: File = FILE.parse().unwrap();
         assert_eq!(*file.name(), String::from("abc/def"));
         assert_eq!(
             *file.hashes().unwrap(),

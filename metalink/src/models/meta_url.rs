@@ -63,12 +63,19 @@ impl MetaUrl {
     }
 }
 
+impl std::str::FromStr for MetaUrl {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<MetaUrl>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_full_metaurl() {
@@ -76,7 +83,7 @@ mod tests {
             <metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</metaurl>
         "#;
 
-        let meta_url: MetaUrl = from_str(METAURL).unwrap();
+        let meta_url: MetaUrl = METAURL.parse().unwrap();
 
         assert_eq!(
             *meta_url.url(),
@@ -96,7 +103,7 @@ mod tests {
             <metaurl mediatype="application/json">https://www.rfc-editor.org/rfc/rfc5854</metaurl>
         "#;
 
-        let meta_url: MetaUrl = from_str(METAURL).unwrap();
+        let meta_url: MetaUrl = METAURL.parse().unwrap();
 
         assert_eq!(
             *meta_url.url(),

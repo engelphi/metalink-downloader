@@ -32,10 +32,17 @@ impl Hash {
     }
 }
 
+impl std::str::FromStr for Hash {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Hash>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_hash_with_type() {
@@ -43,7 +50,7 @@ mod tests {
             <hash type="sha-1">abc</hash>
         "#;
 
-        let hash: Hash = from_str(HASH).unwrap();
+        let hash: Hash = HASH.parse().unwrap();
 
         assert_eq!(hash.hash_type(), Some(HashFunctionTextualName::Sha1));
         assert_eq!(hash.value(), String::from("abc"));
@@ -55,7 +62,7 @@ mod tests {
             <hash>abc</hash>
         "#;
 
-        let hash: Hash = from_str(HASH).unwrap();
+        let hash: Hash = HASH.parse().unwrap();
 
         assert_eq!(hash.hash_type(), None);
         assert_eq!(hash.value(), String::from("abc"));

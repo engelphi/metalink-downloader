@@ -1,5 +1,3 @@
-use crate::MetalinkError;
-
 /// Enumeration describing the mediatype attribute of
 /// metalink:metaurl element according to [RFC5854 Section 4.2.8.2](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.8.2).
 #[derive(Debug, PartialEq, Clone)]
@@ -21,7 +19,7 @@ impl std::fmt::Display for TorrentOrMime {
 }
 
 impl std::str::FromStr for TorrentOrMime {
-    type Err = MetalinkError;
+    type Err = crate::MetalinkError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.to_lowercase() == "torrent" {

@@ -44,10 +44,17 @@ impl Pieces {
     }
 }
 
+impl std::str::FromStr for Pieces {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Pieces>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_pieces() {
@@ -58,7 +65,7 @@ mod tests {
             </pieces>
         "#;
 
-        let pieces: Pieces = from_str(PIECES).unwrap();
+        let pieces: Pieces = PIECES.parse().unwrap();
         assert_eq!(pieces.hash_type(), HashFunctionTextualName::Sha1);
         assert_eq!(pieces.length(), 50);
         assert_eq!(

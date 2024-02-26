@@ -22,17 +22,24 @@ impl Identity {
     }
 }
 
+impl std::str::FromStr for Identity {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Identity>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_identity_works() {
         const IDENTITY: &str = r#"
             <Identity>Test</Identity>
         "#;
-        let identity: Identity = from_str(IDENTITY).unwrap();
+        let identity: Identity = IDENTITY.parse().unwrap();
         assert_eq!(Identity::new("Test"), identity);
         assert_eq!(identity.identity(), "Test");
     }

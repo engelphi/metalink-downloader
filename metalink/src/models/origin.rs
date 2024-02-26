@@ -27,12 +27,19 @@ impl Origin {
     }
 }
 
+impl std::str::FromStr for Origin {
+    type Err = crate::MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Origin>(s)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::utils::from_str;
 
     #[test]
     fn read_origin_with_dynamic_set_to_true() {
@@ -40,7 +47,7 @@ mod tests {
             <origin dynamic="true">https://www.google.com</origin>
         "#;
 
-        let origin: Origin = from_str(DYNAMIC).unwrap();
+        let origin: Origin = DYNAMIC.parse().unwrap();
         assert_eq!(origin.is_dynamic(), true);
         assert_eq!(
             *origin.url(),
@@ -54,7 +61,7 @@ mod tests {
             <origin dynamic="false">https://www.google.com</origin>
         "#;
 
-        let origin: Origin = from_str(DYNAMIC).unwrap();
+        let origin: Origin = DYNAMIC.parse().unwrap();
         assert_eq!(origin.is_dynamic(), false);
         assert_eq!(
             *origin.url(),
@@ -68,7 +75,7 @@ mod tests {
             <origin>https://www.google.com</origin>
         "#;
 
-        let origin: Origin = from_str(DYNAMIC).unwrap();
+        let origin: Origin = DYNAMIC.parse().unwrap();
         assert_eq!(origin.is_dynamic(), false);
         assert_eq!(
             *origin.url(),
