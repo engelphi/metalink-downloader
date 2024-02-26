@@ -3,8 +3,8 @@ use crate::IANARegistryError;
 use serde::{Deserialize, Serialize};
 
 // ================================================================================================
-/// Represents list of operation systems as defined by IANA Operating System Names
-/// registry: https://www.iana.org/assignments/operating-system-names/operating-system-names.xhtml
+/// Represents list of operation systems as defined by the [IANA Operating System Names](https://www.iana.org/assignments/operating-system-names/operating-system-names.xhtml)
+/// registry
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy)]
 pub enum OperatingSystemName {
     /// IANA registry name for the AEGIS operating system
