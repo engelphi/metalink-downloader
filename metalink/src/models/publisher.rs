@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 /// Representation of the metalink:publisher field according to
 /// [RFC5854 Section 4.2.12](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.12)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Publisher {
     #[serde(rename = "@name")]
     name: String,
-    #[serde(rename = "@url", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "@url")]
     url: Option<url::Url>,
 }
 
@@ -41,9 +41,7 @@ impl Publisher {
 #[cfg(test)]
 mod test {
     use super::*;
-    use quick_xml::de::from_str;
-    use quick_xml::se::to_string;
-    use std::str::FromStr;
+    use crate::utils::from_str;
 
     #[test]
     fn read_full_publisher() {
@@ -52,6 +50,13 @@ mod test {
         "#;
 
         let publisher: Publisher = from_str(PUBLISHER).unwrap();
+        assert_eq!(
+            Publisher::new_with_url(
+                "Company Inc.",
+                url::Url::parse("https://www.google.com").unwrap()
+            ),
+            publisher
+        );
         assert_eq!(*publisher.name(), String::from("Company Inc."));
         assert_eq!(
             *publisher.url().unwrap(),
@@ -65,27 +70,8 @@ mod test {
             <Publisher name="Company Inc."/>
         "#;
         let publisher: Publisher = from_str(PUBLISHER).unwrap();
+        assert_eq!(Publisher::new("Company Inc.",), publisher);
         assert_eq!(*publisher.name(), String::from("Company Inc."));
         assert_eq!(publisher.url(), None);
-    }
-
-    #[test]
-    fn write_publisher_with_only_required_fields() {
-        let publisher = Publisher::new("Company Inc.");
-
-        let expected = String::from(r#"<Publisher name="Company Inc."/>"#);
-        assert_eq!(to_string::<Publisher>(&publisher).unwrap(), expected);
-    }
-
-    #[test]
-    fn write_publisher_with_url() {
-        let publisher = Publisher::new_with_url(
-            "Company Inc.",
-            url::Url::from_str("https://www.google.com").unwrap(),
-        );
-
-        let expected =
-            String::from(r#"<Publisher name="Company Inc." url="https://www.google.com/"/>"#);
-        assert_eq!(to_string::<Publisher>(&publisher).unwrap(), expected);
     }
 }

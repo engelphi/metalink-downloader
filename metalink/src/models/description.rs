@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:description element
 /// according to [RFC5854 Section 4.2.2](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.2)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Description {
     #[serde(rename = "$text")]
     description: String,
@@ -25,8 +25,7 @@ impl Description {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
-    use quick_xml::se::to_string;
+    use crate::utils::from_str;
 
     #[test]
     fn read_description_works() {
@@ -35,14 +34,6 @@ mod tests {
         "#;
         let description: Description = from_str(DESCRIPTION).unwrap();
         assert_eq!(Description::new("Test"), description);
-    }
-
-    #[test]
-    fn write_description_works() {
-        let description = Description::new("Test");
-
-        let expected = String::from(r#"<Description>Test</Description>"#);
-
-        assert_eq!(to_string::<Description>(&description).unwrap(), expected);
+        assert_eq!(description.description(), "Test");
     }
 }

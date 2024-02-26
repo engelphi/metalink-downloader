@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:origin element according to
 /// [RFC5854 Section 4.2.9](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.9)
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Origin {
     #[serde(rename = "@dynamic")]
     dynamic: Option<bool>,
@@ -11,6 +11,11 @@ pub struct Origin {
 }
 
 impl Origin {
+    /// Construct a new metalink:origin field
+    pub fn new(dynamic: Option<bool>, url: url::Url) -> Self {
+        Self { dynamic, url }
+    }
+
     /// Returns whether the dynamic is set and true
     pub fn is_dynamic(&self) -> bool {
         matches!(self.dynamic, Some(true))
@@ -27,7 +32,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use quick_xml::de::from_str;
+    use crate::utils::from_str;
 
     #[test]
     fn read_origin_with_dynamic_set_to_true() {

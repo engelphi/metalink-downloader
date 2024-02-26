@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use validator::Validate;
 
 /// Representation of the metalink:url element according to
 /// [RFC5854 Section 4.2.16](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.16)
-#[derive(Debug, Deserialize, Validate, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Validate, PartialEq, Clone)]
 pub struct FileUrl {
     #[validate(range(
         min = 1,
@@ -55,7 +55,7 @@ impl FileUrl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
+    use crate::utils::from_str;
     use std::str::FromStr;
 
     #[test]

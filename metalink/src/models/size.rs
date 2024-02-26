@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:size element
 /// according to [RFC5854 Section 4.2.14](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.14)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Size {
     #[serde(rename = "$text")]
     size: u64,
@@ -23,8 +23,7 @@ impl Size {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
-    use quick_xml::se::to_string;
+    use crate::utils::from_str;
 
     #[test]
     fn read_size_works() {
@@ -33,14 +32,6 @@ mod tests {
         "#;
         let size: Size = from_str(SIZE).unwrap();
         assert_eq!(Size::new(50), size);
-    }
-
-    #[test]
-    fn write_size_works() {
-        let size = Size::new(50);
-
-        let expected = String::from(r#"<Size>50</Size>"#);
-
-        assert_eq!(to_string::<Size>(&size).unwrap(), expected);
+        assert_eq!(size.size(), 50);
     }
 }

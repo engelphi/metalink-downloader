@@ -2,7 +2,7 @@ use crate::MetalinkError;
 
 /// Enumeration describing the mediatype attribute of
 /// metalink:metaurl element according to [RFC5854 Section 4.2.8.2](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.8.2).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TorrentOrMime {
     /// The mediatype is torrent meaning that the url of the metaurl
     /// points to a Bittorrent IRI.
@@ -29,5 +29,31 @@ impl std::str::FromStr for TorrentOrMime {
         }
 
         Ok(Self::Mime(s.parse::<mime::Mime>()?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        let torrent = TorrentOrMime::Torrent;
+        let mime = TorrentOrMime::Mime("application/json".parse::<mime::Mime>().unwrap());
+
+        assert_eq!(format!("{}", torrent), "torrent");
+        assert_eq!(format!("{}", mime), "application/json");
+    }
+
+    #[test]
+    fn test_from_str() {
+        assert_eq!(
+            "torrent".parse::<TorrentOrMime>().unwrap(),
+            TorrentOrMime::Torrent
+        );
+        assert_eq!(
+            "application/json".parse::<TorrentOrMime>().unwrap(),
+            TorrentOrMime::Mime("application/json".parse::<mime::Mime>().unwrap())
+        );
     }
 }

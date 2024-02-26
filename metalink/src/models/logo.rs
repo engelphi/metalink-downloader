@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:logo element
 /// according to [RFC5854 Section 4.2.7](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.7)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Logo {
     #[serde(rename = "$text")]
     logo: url::Url,
@@ -23,8 +23,7 @@ impl Logo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
-    use quick_xml::se::to_string;
+    use crate::utils::from_str;
 
     #[test]
     fn read_logo_works() {
@@ -33,16 +32,6 @@ mod tests {
         "#;
         let logo: Logo = from_str(LOGO).unwrap();
         assert_eq!(Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()), logo);
-    }
-
-    #[test]
-    fn write_logo_works() {
-        let logo = Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap());
-
-        let expected = String::from(
-            r#"<Logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</Logo>"#,
-        );
-
-        assert_eq!(to_string::<Logo>(&logo).unwrap(), expected);
+        assert_eq!(*logo.logo(), url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap());
     }
 }

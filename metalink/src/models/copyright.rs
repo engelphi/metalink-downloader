@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:copyright element
 /// according to [RFC5854 Section 4.2.1](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.1)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Copyright {
     #[serde(rename = "$text")]
     copyright: String,
@@ -25,8 +25,7 @@ impl Copyright {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::de::from_str;
-    use quick_xml::se::to_string;
+    use crate::utils::from_str;
 
     #[test]
     fn read_copyright_works() {
@@ -35,14 +34,6 @@ mod tests {
         "#;
         let copyright: Copyright = from_str(COPYRIGHT).unwrap();
         assert_eq!(Copyright::new("Test"), copyright);
-    }
-
-    #[test]
-    fn write_copyright_works() {
-        let copyright = Copyright::new("Test");
-
-        let expected = String::from(r#"<Copyright>Test</Copyright>"#);
-
-        assert_eq!(to_string::<Copyright>(&copyright).unwrap(), expected);
+        assert_eq!(copyright.copyright(), "Test");
     }
 }

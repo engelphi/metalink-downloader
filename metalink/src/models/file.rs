@@ -2,41 +2,27 @@ use crate::{
     Copyright, Description, FileUrl, Hash, Identity, Language, Logo, MetaUrl, MetalinkError,
     Pieces, Publisher, Signature, Size, Version, OS,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Representation of the metalink:file element according to
 /// [RFC5854 Section 4.1.2](https://www.rfc-editor.org/rfc/rfc5854#section-4.1.2)
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct File {
     #[serde(rename = "@name")]
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     copyright: Option<Copyright>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<Description>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     hash: Option<Vec<Hash>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     identity: Option<Identity>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<Vec<Language>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     logo: Option<Logo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     metaurl: Option<Vec<MetaUrl>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     os: Option<Vec<OS>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pieces: Option<Pieces>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     publisher: Option<Publisher>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     signature: Option<Signature>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<Size>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<Vec<FileUrl>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<Version>,
 }
 
@@ -307,7 +293,7 @@ mod tests {
     use crate::TorrentOrMime;
     use iana_registry_enums::{HashFunctionTextualName, OperatingSystemName};
 
-    use quick_xml::{de::from_str, se::to_string};
+    use crate::utils::from_str;
 
     use std::str::FromStr;
 
@@ -495,104 +481,29 @@ mod tests {
     }
 
     #[test]
-    fn write_full_file_works() {
-        let file = FileBuilder::new()
-            .with_name("abc/def")
-            .with_hashes(vec![
-                Hash::new(Some(HashFunctionTextualName::Sha1), "abc"),
-                Hash::new(Some(HashFunctionTextualName::Sha256), "def"),
-                Hash::new(Some(HashFunctionTextualName::Sha512), "ghi"),
-            ])
-            .with_description(Description::new("Description"))
-            .with_copyright(Copyright::new("Copyright"))
-            .with_identity(Identity::new("Test"))
-            .with_languages(vec![Language::new("German"), Language::new("English")])
-            .with_logo(Logo::new(url::Url::parse("https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png").unwrap()))
-            .with_metaurls(vec![MetaUrl::new(
-                url::Url::parse("https://www.rfc-editor.org/rfc/rfc5854").unwrap(),
-                TorrentOrMime::Torrent,
-                Some(1),
-                Some(String::from("test/test2/test.tar.gz"))
-            )])
-            .with_oses(vec![
-                OS::new(OperatingSystemName::MacOS),
-                OS::new(OperatingSystemName::Linux),
-            ])
-            .with_pieces(Pieces::new(
-                HashFunctionTextualName::Sha1,
-                50,
-                vec![Hash::new(None, "abc"), Hash::new(None, "def")]
-            ))
-            .with_publisher(Publisher::new_with_url(
-                "Company Inc.",
-                url::Url::parse("https://www.google.com").unwrap()
-            ))
-            .with_signature(Signature::new(
-                mime::Mime::from_str("application/pgp-signature").unwrap(),
-                "-----BEGIN PGP SIGNATURE-----
-                   Version: GnuPG v1.4.10 (GNU/Linux)
+    fn file_builder_error_for_file_without_name() {
+        assert!(FileBuilder::new().build().is_err());
+    }
 
-                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
-                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
-                   =ggAf
-                   -----END PGP SIGNATURE-----")
-            )
-            .with_urls(vec![
-                FileUrl::new(
-                    url::Url::parse("https://www.google.de").unwrap(),
-                    Some(1),
-                    Some(isocountry::CountryCode::DEU)
-                ),
-                FileUrl::new(
-                    url::Url::parse("https://www.google.com").unwrap(),
-                    Some(1),
-                    Some(isocountry::CountryCode::USA)
-                )
-            ])
-            .with_size(Size::new(50))
-            .with_version(Version::new("1.0.0"))
+    #[test]
+    fn file_builder_error_for_file_without_urls_and_metaurls() {
+        assert!(FileBuilder::new().with_name("test").build().is_err());
+        assert!(FileBuilder::new().with_name("test").build().is_err());
+        assert!(FileBuilder::new()
+            .with_name("test")
+            .with_urls(vec![])
             .build()
-            .unwrap();
-
-        let expected = String::from(
-            r#"
-            <File name="abc/def">
-                <Hash type="sha-1">abc</Hash>
-                <Hash type="sha-256">def</Hash>
-                <Hash type="sha-512">ghi</Hash>
-                <Description>Description</Description>
-                <Copyright>Copyright</Copyright>
-                <Identity>Test</Identity>
-                <Language>German</Language>
-                <Language>English</Language>
-                <Logo>https://www.google.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png</Logo>
-                <Metaurl priority="1" mediatype="torrent" name="test/test2/test.tar.gz">https://www.rfc-editor.org/rfc/rfc5854</Metaurl>
-                <OS>MACOS</OS>
-                <OS>LINUX</OS>
-                <Pieces type="sha-1" length="50">
-                    <hash>abc</hash>
-                    <hash>def</hash>
-                </Pieces>
-                <Publisher name="Company Inc." url="https://www.google.com" />
-                <Signature mediatype="application/pgp-signature">
-                   -----BEGIN PGP SIGNATURE-----
-                   Version: GnuPG v1.4.10 (GNU/Linux)
-
-                   iEYEABECAAYFAkrxdXQACgkQeOEcayedXJHqFwCfd1p/HhRf/iDvYhvFbTrQPz+p
-                   p3oAoO9lKHoOqOE0EMB3zmMcLoYUrNkg
-                   =ggAf
-                   -----END PGP SIGNATURE-----
-                </Signature>
-                <Size>
-                    50
-                </Size>
-                <Url priority="1" location="de">https://www.google.de</url>
-                <Url priority="1" location="us">https://www.google.com</url>
-                <Version>1.0.0</Version>
-            </File>
-        "#,
-        );
-
-        assert_eq!(to_string::<File>(&file).unwrap(), expected);
+            .is_err());
+        assert!(FileBuilder::new()
+            .with_name("test")
+            .with_metaurls(vec![])
+            .build()
+            .is_err());
+        assert!(FileBuilder::new()
+            .with_name("test")
+            .with_urls(vec![])
+            .with_metaurls(vec![])
+            .build()
+            .is_err());
     }
 }

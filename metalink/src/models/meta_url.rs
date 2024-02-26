@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use validator::Validate;
 
@@ -7,7 +7,7 @@ use crate::TorrentOrMime;
 /// Representation of the metalink:metaurl element according to
 /// [RFC5854 Section 4.2.8](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.8)
 #[serde_as]
-#[derive(Debug, Deserialize, Serialize, Validate, PartialEq)]
+#[derive(Debug, Deserialize, Validate, PartialEq, Clone)]
 pub struct MetaUrl {
     #[validate(range(
         min = 1,
@@ -68,7 +68,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use quick_xml::de::from_str;
+    use crate::utils::from_str;
 
     #[test]
     fn read_full_metaurl() {

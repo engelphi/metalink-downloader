@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
 /// Representation of the metalink:signature field according to
 /// [RFC5854 Section 4.2.13](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.13)
 #[serde_as]
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Signature {
     // TODO add validation: needs to be MIME type describing the signature type
     #[serde(rename = "@mediatype")]
@@ -39,7 +39,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use quick_xml::de::from_str;
+    use crate::utils::from_str;
     #[test]
     fn read_signature() {
         const SIGNATURE: &str = r#"
