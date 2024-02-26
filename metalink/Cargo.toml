@@ -15,5 +15,8 @@ chrono = { version = "0.4", features = ["serde"] }
 mime = "0.3"
 serde_with = "3"
 thiserror = "1"
-color-eyre = "0.6"
+anyhow = "1"
 isocountry = "0.3"
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }

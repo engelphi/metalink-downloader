@@ -1,0 +1,26 @@
+<metalink>
+  <generator>TestGenerator</generator>
+  <published>2010-05-01T12:15:02Z</published>
+  <updated>2010-05-02T12:15:02Z</updated>
+  <origin dynamic="true">https://www.google.com</origin>
+  <file name="abc/def">
+      <hash type="sha-1">abc</hash>
+      <hash type="sha-256">def</hash>
+      <hash type="sha-512">ghi</hash>
+      <pieces type="sha-1" length="50">
+          <hash>abc</hash>
+          <hash>def</hash>
+      </pieces>
+      <url priority="1" location="de">https://www.google.de</url>
+  </file>
+  <file name="def/ghi">
+      <hash type="sha-1">abc</hash>
+      <hash type="sha-256">def</hash>
+      <hash type="sha-512">ghi</hash>
+      <pieces type="sha-1" length="50">
+          <hash>abc</hash>
+          <hash>def</hash>
+      </pieces>
+      <url priority="1" location="de">https://www.google.de</url>
+  </file>
+</metalink>

@@ -1,12 +1,15 @@
+use std::str::FromStr;
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use anyhow::Context;
 
-use crate::utils::*;
+use crate::{utils::*, MetalinkError};
 use crate::{File, Origin};
 
 /// Representation of the metalink:metalink element according to
 /// [RFC5854 Section 4.1.1](https://www.rfc-editor.org/rfc/rfc5854#section-4.1.1)
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Metalink {
     generator: Option<String>,
     origin: Option<Origin>,
@@ -20,6 +23,15 @@ pub struct Metalink {
 }
 
 impl Metalink {
+    /// Load a metalink from the file specified by file_path
+    pub fn load_from_file<P: AsRef<std::path::Path>>(
+        file_path: P,
+    ) -> Result<Metalink, MetalinkError> {
+        Ok(quick_xml::de::from_reader(std::io::BufReader::new(
+            std::fs::File::open(file_path).context("Failed to open file")?,
+        ))?)
+    }
+
     /// Returns the value of the metalink:generator element
     /// if the field exists. See [RFC5854 Section 4.2.3](https://www.rfc-editor.org/rfc/rfc5854#section-4.2.3)
     pub fn generator(&self) -> Option<&String> {
@@ -51,6 +63,14 @@ impl Metalink {
     }
 }
 
+impl FromStr for Metalink {
+    type Err = MetalinkError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(crate::utils::from_str::<Metalink>(s)?)
+    }
+}
+
 // ----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -58,7 +78,7 @@ mod tests {
     // use std::str::FromStr;
     //
     use super::*;
-    use crate::{utils::from_str, FileBuilder, FileUrl, Hash, Pieces};
+    use crate::{FileBuilder, FileUrl, Hash, Pieces};
     use chrono::DateTime;
     use iana_registry_enums::HashFunctionTextualName;
 
@@ -92,7 +112,7 @@ mod tests {
                 </file>
             </metalink>
         "#;
-        let metalink: Metalink = from_str(METALINK).unwrap();
+        let metalink: Metalink = METALINK.parse().unwrap();
 
         let expected_generator = Some(String::from("TestGenerator"));
         let expected_published = Some(DateTime::from_naive_utc_and_offset(

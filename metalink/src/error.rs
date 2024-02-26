@@ -15,4 +15,12 @@ pub enum MetalinkError {
     /// An error occured while constructing a metalink
     #[error("Error constructing the Metalink: {0}")]
     MetalinkConstructionError(String),
+
+    /// An error while parsing the metalink xml occured
+    #[error("Error while parsing metalink")]
+    MetalinkParseError(#[from] quick_xml::de::DeError),
+
+    /// An unexpected error occured
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }

@@ -1,4 +1,3 @@
-#[cfg(test)]
 pub(crate) use quick_xml::de::from_str;
 
 pub mod rfc3339_to_datetime_utc {
