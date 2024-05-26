@@ -1,0 +1,15 @@
+[package]
+name = "metalink-downloader"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+metalink = { path = "../metalink" }
+iana-registry-enums = { path = "../iana-registry-enums" }
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["http2", "gzip", "stream", "native-tls-alpn"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+url = { version = "2.5", features = ["serde"] }
