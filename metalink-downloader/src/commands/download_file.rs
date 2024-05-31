@@ -1,14 +1,15 @@
-use crate::utils::make_http_client;
+use crate::utils::{calculate_ranges, make_http_client};
 use anyhow::{anyhow, Result};
-use futures::{FutureExt, TryFutureExt};
-use std::{future::Future, io::Write, os::unix::fs::FileExt, path::PathBuf};
+use std::{
+    future::Future,
+    io::{Seek, Write},
+    path::PathBuf,
+};
+use tokio::task::JoinHandle;
 
-const ONE_MB: usize = 1048576;
-const TEST_SIZE: usize = 563000;
+const ONE_MB: u64 = 1048576;
 
 pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: String) -> Result<()> {
-    println!("{:#?}, {:#?}, {:#?}", url, target_dir, user_agent);
-
     let client = make_http_client(user_agent)?;
     let url = reqwest::Url::parse(url.as_str())?;
     let path = PathBuf::from(url.path());
@@ -19,7 +20,6 @@ pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: Strin
 
     match get_file_size(&client, url.clone()).await? {
         Some(size) => {
-            println!("Size: {}", size);
             if size <= ONE_MB {
                 simple_download(&client, url.clone(), target_file).await
             } else {
@@ -50,8 +50,8 @@ pub async fn simple_download(
 pub fn request_range(
     client: &reqwest::Client,
     url: &reqwest::Url,
-    start: usize,
-    end: usize,
+    start: u64,
+    end: u64,
 ) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
     client
         .get(url.clone())
@@ -63,30 +63,78 @@ pub fn request_range(
         .send()
 }
 
+#[derive(Debug)]
+enum Command {
+    WriteFileChunk {
+        offset: u64,
+        downloaded_bytes: bytes::Bytes,
+    },
+    FinishWriting,
+}
+
 pub async fn segregrated_download(
     client: &reqwest::Client,
     url: reqwest::Url,
     target_file: PathBuf,
-    size: usize,
+    size: u64,
 ) -> Result<()> {
+    let available_parallelism = std::thread::available_parallelism()?.get() - 1;
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Command>(available_parallelism);
     let mut file = std::fs::File::create(target_file.clone())?;
-    let mut remaining_size = size;
-    let mut current_pos = 0;
-    while remaining_size >= ONE_MB {
-        let response = request_range(&client, &url, current_pos, current_pos + ONE_MB - 1).await?;
-        file.write_at(&response.bytes().await?, current_pos as u64)?;
-        current_pos += ONE_MB;
-        remaining_size -= ONE_MB;
+    let file_writer_task: JoinHandle<Result<()>> = tokio::spawn(async move {
+        let mut bytes_written = 0;
+        while let Some(cmd) = rx.recv().await {
+            match cmd {
+                Command::FinishWriting => break,
+                Command::WriteFileChunk {
+                    offset,
+                    downloaded_bytes,
+                } => {
+                    file.seek(std::io::SeekFrom::Start(offset))?;
+                    bytes_written += file.write(&downloaded_bytes)?;
+                    file.flush()?;
+                    println!(
+                        "Progress: {}%",
+                        (bytes_written as f64 / size as f64) * 100f64
+                    );
+                }
+            }
+        }
+        Ok(())
+    });
+    let ranges = calculate_ranges(size, ONE_MB, target_file);
+
+    for chunk in ranges.chunks(available_parallelism) {
+        let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
+        for chunk_meta_data in chunk {
+            let cloned_client = client.clone();
+            let cloned_url = url.clone();
+            let cloned_tx = tx.clone();
+            let start = chunk_meta_data.start;
+            let end = chunk_meta_data.end;
+
+            tasks.push(tokio::spawn(async move {
+                let response = request_range(&cloned_client, &cloned_url, start, end).await?;
+                let _ = cloned_tx
+                    .send(Command::WriteFileChunk {
+                        offset: start,
+                        downloaded_bytes: response.bytes().await?,
+                    })
+                    .await;
+                Ok(())
+            }));
+        }
+        // NOTE: the results need to be checked for failed requests and retried if it make sense
+        let _ = futures::future::join_all(tasks).await;
     }
-    let response =
-        request_range(&client, &url, current_pos, current_pos + remaining_size - 1).await?;
-    file.write_at(&response.bytes().await?, current_pos as u64)?;
-    file.flush()?;
+
+    tx.send(Command::FinishWriting).await?;
+    let _ = file_writer_task.await?;
 
     Ok(())
 }
 
-pub async fn get_file_size(client: &reqwest::Client, url: reqwest::Url) -> Result<Option<usize>> {
+pub async fn get_file_size(client: &reqwest::Client, url: reqwest::Url) -> Result<Option<u64>> {
     let mut response = client.head(url).send().await?;
 
     match response

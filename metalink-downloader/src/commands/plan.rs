@@ -1,7 +1,7 @@
 use metalink::*;
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
     println!("File: {:?}, Target: {:?}", metalink_file, target_dir);
@@ -12,7 +12,7 @@ pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
 
 #[derive(Debug)]
 pub struct Plan {
-    files: Vec<FilePlan>,
+    pub files: Vec<FilePlan>,
 }
 
 impl Plan {
@@ -29,13 +29,13 @@ impl Plan {
 
 #[derive(Debug)]
 pub struct FilePlan {
-    target_file: PathBuf,
-    url: url::Url,
-    chunks: Option<Vec<FileChunk>>,
+    pub target_file: PathBuf,
+    pub url: url::Url,
+    pub chunks: Option<Vec<FileChunk>>,
 }
 
 impl FilePlan {
-    pub fn new(file: &metalink::File, base_download_dir: &PathBuf) -> Self {
+    pub fn new(file: &metalink::File, base_download_dir: &Path) -> Self {
         let chunks: Vec<FileChunk> = Vec::new();
 
         Self {
@@ -48,10 +48,10 @@ impl FilePlan {
 
 #[derive(Debug)]
 pub struct FileChunk {
-    start: usize,
-    end: usize,
-    checksum: String,
-    checksum_type: iana_registry_enums::HashFunctionTextualName,
+    pub start: usize,
+    pub end: usize,
+    pub checksum: String,
+    pub checksum_type: iana_registry_enums::HashFunctionTextualName,
 }
 //
 // impl From<Option<&Pieces>> for Option<Vec<FileChunk>> {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
-pub struct CLI {
+pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }

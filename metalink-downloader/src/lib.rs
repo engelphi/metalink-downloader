@@ -5,13 +5,13 @@ mod cli;
 mod commands;
 mod utils;
 
-use cli::{Commands, CLI};
+use cli::{Cli, Commands};
 
 pub struct App {}
 
 impl App {
     pub async fn run(self) -> Result<()> {
-        let cli = CLI::parse();
+        let cli = Cli::parse();
         match cli.command {
             Commands::Plan {
                 metalink_file,
