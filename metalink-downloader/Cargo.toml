@@ -38,3 +38,5 @@ sha3 = "0.10"
 #tracing/logging
 log = "0.4"
 log4rs = "1"
+
+indicatif = "0.17"

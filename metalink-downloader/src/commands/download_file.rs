@@ -1,3 +1,4 @@
+use crate::commands::ProgressUpdate;
 use crate::utils::{calculate_ranges, make_http_client, ChunkMetaData};
 use crate::Result;
 use anyhow::{anyhow, Context};
@@ -26,7 +27,7 @@ pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: Strin
                 simple_download(&client, url.clone(), target_file).await
             } else {
                 let ranges = calculate_ranges(size, ONE_MB, &target_file);
-                segregrated_download(&client, url.clone(), target_file, size, &ranges).await
+                segregrated_download(&client, url.clone(), target_file, size, &ranges, None).await
             }
         }
         None => simple_download(&client, url.clone(), target_file).await,
@@ -108,7 +109,17 @@ async fn download_chunk(
         for _ in 0..3 {
             let response = request_range(client, url, chunk.start, chunk.end).await?;
             let bytes = response.bytes().await?;
+            log::debug!(
+                "Validating checksum of {:?} for chunk starting at {}",
+                chunk.filename,
+                chunk.start
+            );
             if let Some(true) = chunk.validate_checksum(&bytes) {
+                log::debug!(
+                    "Checksum validation of {:?} for chunk starting at {} succeeded",
+                    chunk.filename,
+                    chunk.start
+                );
                 let _ = tx
                     .send(Command::WriteFileChunk {
                         offset: chunk.start,
@@ -117,6 +128,11 @@ async fn download_chunk(
                     .await;
                 return Ok(());
             }
+            log::warn!(
+                "Checksum validation for chunk of file {:?} starting at {}",
+                chunk.filename,
+                chunk.start
+            );
         }
     }
 
@@ -129,6 +145,7 @@ pub async fn segregrated_download(
     target_file: PathBuf,
     size: u64,
     ranges: &[ChunkMetaData],
+    prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
 ) -> Result<()> {
     let available_parallelism = std::thread::available_parallelism()?.get() - 1;
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Command>(available_parallelism);
@@ -147,15 +164,21 @@ pub async fn segregrated_download(
                 } => {
                     file.seek(std::io::SeekFrom::Start(offset))
                         .context(format!("Failed to seek file: {:#?}", file))?;
-                    bytes_written += file
+                    let bytes = file
                         .write(&downloaded_bytes)
                         .context(format!("Failed to write file: {:#?}", file))?;
+                    bytes_written += bytes;
                     file.flush()
                         .context(format!("Failed to flush file: {:#?}", file))?;
                     info!(
                         "Progress: {}%",
                         (bytes_written as f64 / size as f64) * 100f64
                     );
+
+                    if let Some(tx) = &prog_tx {
+                        tx.send(ProgressUpdate::Progressed(bytes as u64))
+                            .context(format!("Failed to send progress update"))?;
+                    }
                 }
             }
         }

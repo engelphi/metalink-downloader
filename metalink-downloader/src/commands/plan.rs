@@ -17,6 +17,7 @@ pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
 #[derive(Debug)]
 pub struct Plan {
     pub files: Vec<FilePlan>,
+    pub total_size: u64,
 }
 
 impl Plan {
@@ -27,7 +28,11 @@ impl Plan {
             files.push(FilePlan::new(file, &target_dir)?);
         }
 
-        Ok(Self { files })
+        let total_size = files
+            .iter()
+            .fold(0, |acc, file| acc + file.file_size.unwrap_or(0));
+
+        Ok(Self { files, total_size })
     }
 }
 
