@@ -177,7 +177,7 @@ pub async fn segregrated_download(
 
                     if let Some(tx) = &prog_tx {
                         tx.send(ProgressUpdate::Progressed(bytes as u64))
-                            .context(format!("Failed to send progress update"))?;
+                            .context("Failed to send progress update".to_string())?;
                     }
                 }
             }
