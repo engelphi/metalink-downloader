@@ -1,5 +1,7 @@
-use crate::utils::{calculate_ranges, make_http_client};
-use anyhow::{anyhow, Result};
+use crate::utils::{calculate_ranges, make_http_client, ChunkMetaData};
+use crate::Result;
+use anyhow::{anyhow, Context};
+use log::info;
 use std::{
     future::Future,
     io::{Seek, Write},
@@ -23,7 +25,8 @@ pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: Strin
             if size <= ONE_MB {
                 simple_download(&client, url.clone(), target_file).await
             } else {
-                segregrated_download(&client, url.clone(), target_file, size).await
+                let ranges = calculate_ranges(size, ONE_MB, &target_file);
+                segregrated_download(&client, url.clone(), target_file, size, &ranges).await
             }
         }
         None => simple_download(&client, url.clone(), target_file).await,
@@ -35,14 +38,27 @@ pub async fn simple_download(
     url: reqwest::Url,
     target_file: PathBuf,
 ) -> Result<()> {
-    println!(
+    info!(
         "Simple Download: Target file={:?}, Url: {:?}",
         target_file, url
     );
     let response = client.get(url).send().await?;
-    let mut output_file = std::fs::File::create(target_file.clone())?;
-    output_file.write_all(&response.bytes().await?)?;
-    output_file.flush()?;
+    // Note proper error handling needed if parent is None
+    std::fs::create_dir_all(target_file.parent().unwrap())?;
+    let mut output_file = std::fs::File::create(target_file.clone()).context(format!(
+        "Failed to create file simple download: {:#?}",
+        target_file
+    ))?;
+    output_file
+        .write_all(&response.bytes().await?)
+        .context(format!(
+            "Failed to write file simple download: {:#?}",
+            output_file
+        ))?;
+    output_file.flush().context(format!(
+        "Failed to flush file simple download: {:#?}",
+        output_file
+    ))?;
 
     Ok(())
 }
@@ -52,7 +68,7 @@ pub fn request_range(
     url: &reqwest::Url,
     start: u64,
     end: u64,
-) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
+) -> impl Future<Output = std::result::Result<reqwest::Response, reqwest::Error>> {
     client
         .get(url.clone())
         .header(
@@ -72,15 +88,54 @@ enum Command {
     FinishWriting,
 }
 
+async fn download_chunk(
+    chunk: &ChunkMetaData,
+    client: &reqwest::Client,
+    url: &reqwest::Url,
+    tx: &tokio::sync::mpsc::Sender<Command>,
+) -> Result<()> {
+    if !chunk.has_checksum() {
+        let response = request_range(client, url, chunk.start, chunk.end).await?;
+        let _ = tx
+            .send(Command::WriteFileChunk {
+                offset: chunk.start,
+                downloaded_bytes: response.bytes().await?,
+            })
+            .await;
+        return Ok(());
+    } else {
+        // retry at most three times
+        for _ in 0..3 {
+            let response = request_range(client, url, chunk.start, chunk.end).await?;
+            let bytes = response.bytes().await?;
+            if let Some(true) = chunk.validate_checksum(&bytes) {
+                let _ = tx
+                    .send(Command::WriteFileChunk {
+                        offset: chunk.start,
+                        downloaded_bytes: bytes,
+                    })
+                    .await;
+                return Ok(());
+            }
+        }
+    }
+
+    Err(anyhow!("Unable to download chunk").into())
+}
+
 pub async fn segregrated_download(
     client: &reqwest::Client,
     url: reqwest::Url,
     target_file: PathBuf,
     size: u64,
+    ranges: &[ChunkMetaData],
 ) -> Result<()> {
     let available_parallelism = std::thread::available_parallelism()?.get() - 1;
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Command>(available_parallelism);
-    let mut file = std::fs::File::create(target_file.clone())?;
+    // Note proper error handling needed if parent is None
+    std::fs::create_dir_all(target_file.parent().unwrap())?;
+    let mut file = std::fs::File::create(target_file.clone())
+        .context(format!("Failed to create file: {:#?}", target_file))?;
     let file_writer_task: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut bytes_written = 0;
         while let Some(cmd) = rx.recv().await {
@@ -90,10 +145,14 @@ pub async fn segregrated_download(
                     offset,
                     downloaded_bytes,
                 } => {
-                    file.seek(std::io::SeekFrom::Start(offset))?;
-                    bytes_written += file.write(&downloaded_bytes)?;
-                    file.flush()?;
-                    println!(
+                    file.seek(std::io::SeekFrom::Start(offset))
+                        .context(format!("Failed to seek file: {:#?}", file))?;
+                    bytes_written += file
+                        .write(&downloaded_bytes)
+                        .context(format!("Failed to write file: {:#?}", file))?;
+                    file.flush()
+                        .context(format!("Failed to flush file: {:#?}", file))?;
+                    info!(
                         "Progress: {}%",
                         (bytes_written as f64 / size as f64) * 100f64
                     );
@@ -102,7 +161,6 @@ pub async fn segregrated_download(
         }
         Ok(())
     });
-    let ranges = calculate_ranges(size, ONE_MB, target_file);
 
     for chunk in ranges.chunks(available_parallelism) {
         let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
@@ -110,26 +168,26 @@ pub async fn segregrated_download(
             let cloned_client = client.clone();
             let cloned_url = url.clone();
             let cloned_tx = tx.clone();
-            let start = chunk_meta_data.start;
-            let end = chunk_meta_data.end;
+            let cloned_chunk_metadata = chunk_meta_data.clone();
 
             tasks.push(tokio::spawn(async move {
-                let response = request_range(&cloned_client, &cloned_url, start, end).await?;
-                let _ = cloned_tx
-                    .send(Command::WriteFileChunk {
-                        offset: start,
-                        downloaded_bytes: response.bytes().await?,
-                    })
-                    .await;
-                Ok(())
+                download_chunk(
+                    &cloned_chunk_metadata,
+                    &cloned_client,
+                    &cloned_url,
+                    &cloned_tx,
+                )
+                .await
             }));
         }
         // NOTE: the results need to be checked for failed requests and retried if it make sense
         let _ = futures::future::join_all(tasks).await;
     }
 
-    tx.send(Command::FinishWriting).await?;
-    let _ = file_writer_task.await?;
+    tx.send(Command::FinishWriting)
+        .await
+        .context("Failed to send finished command to file writer")?;
+    let _ = file_writer_task.await.context("File writer task failed")?;
 
     Ok(())
 }
@@ -141,7 +199,14 @@ pub async fn get_file_size(client: &reqwest::Client, url: reqwest::Url) -> Resul
         .headers_mut()
         .entry(reqwest::header::CONTENT_LENGTH)
     {
-        reqwest::header::Entry::Occupied(entry) => Ok(Some(entry.get().to_str()?.parse()?)),
+        reqwest::header::Entry::Occupied(entry) => Ok(Some(
+            entry
+                .get()
+                .to_str()
+                .context("Failed convert header Content-Length header value to string")?
+                .parse()
+                .context("Failed to parse Content-Length header")?,
+        )),
         _ => Ok(None),
     }
 }

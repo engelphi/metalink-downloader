@@ -1,9 +1,12 @@
-use anyhow::Result;
+use crate::Result;
+use anyhow::anyhow;
 use digest::generic_array::ArrayLength;
 use digest::{Digest, OutputSizeUser};
 use iana_registry_enums::HashFunctionTextualName;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+use crate::MetalinkDownloadError;
 
 pub fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
     Ok(reqwest::ClientBuilder::new()
@@ -15,7 +18,7 @@ pub fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
         .build()?)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ChunkMetaData {
     pub start: u64,
     pub end: u64,
@@ -32,9 +35,19 @@ impl ChunkMetaData {
             checksum: None,
         }
     }
+
+    pub fn has_checksum(&self) -> bool {
+        self.checksum.is_some()
+    }
+
+    pub fn validate_checksum(&self, bytes: &bytes::Bytes) -> Option<bool> {
+        self.checksum
+            .as_ref()
+            .map(|checksum| checksum.validate_checksum(bytes))
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CheckSum {
     hash_type: HashFunctionTextualName,
     checksum: String,
@@ -45,7 +58,7 @@ where
     <D as OutputSizeUser>::OutputSize: std::ops::Add,
     <<D as OutputSizeUser>::OutputSize as std::ops::Add>::Output: ArrayLength<u8>,
 {
-    format!("{:x}", D::digest(&data))
+    format!("{:x}", D::digest(data))
 }
 
 impl CheckSum {
@@ -58,23 +71,47 @@ impl CheckSum {
 
     fn calculate_checksum(&self, data: &bytes::Bytes) -> String {
         match self.hash_type {
-            HashFunctionTextualName::Md2 => calculate_checksum::<md2::Md2>(&data),
-            HashFunctionTextualName::Md5 => calculate_checksum::<md5::Md5>(&data),
-            HashFunctionTextualName::Sha1 => calculate_checksum::<sha1_checked::Sha1>(&data),
-            HashFunctionTextualName::Sha224 => calculate_checksum::<sha2::Sha224>(&data),
-            HashFunctionTextualName::Sha256 => calculate_checksum::<sha2::Sha256>(&data),
-            HashFunctionTextualName::Sha384 => calculate_checksum::<sha2::Sha384>(&data),
-            HashFunctionTextualName::Sha512 => calculate_checksum::<sha2::Sha512>(&data),
+            HashFunctionTextualName::Md2 => calculate_checksum::<md2::Md2>(data),
+            HashFunctionTextualName::Md5 => calculate_checksum::<md5::Md5>(data),
+            HashFunctionTextualName::Sha1 => calculate_checksum::<sha1_checked::Sha1>(data),
+            HashFunctionTextualName::Sha224 => calculate_checksum::<sha2::Sha224>(data),
+            HashFunctionTextualName::Sha256 => calculate_checksum::<sha2::Sha256>(data),
+            HashFunctionTextualName::Sha384 => calculate_checksum::<sha2::Sha384>(data),
+            HashFunctionTextualName::Sha512 => calculate_checksum::<sha2::Sha512>(data),
             _ => unimplemented!(),
         }
     }
 
     pub fn validate_checksum(&self, data: &bytes::Bytes) -> bool {
-        self.calculate_checksum(&data) == self.checksum
+        self.calculate_checksum(data) == self.checksum
     }
 }
 
-pub fn calculate_ranges(total_size: u64, block_size: u64, filename: PathBuf) -> Vec<ChunkMetaData> {
+pub fn to_chunk_metadata(
+    pieces: &metalink::Pieces,
+    filename: &Path,
+    total_size: u64,
+) -> Result<Vec<ChunkMetaData>> {
+    let mut ranges = calculate_ranges(total_size, pieces.length(), filename);
+
+    let hash_type = pieces.hash_type();
+
+    if ranges.len() != pieces.hashes().len() {
+        return Err(MetalinkDownloadError::Other(anyhow!(
+            "Mismatch between chunk count({}) and pieces count({})",
+            ranges.len(),
+            pieces.hashes().len()
+        )));
+    }
+
+    for (chunk, hash) in ranges.iter_mut().zip(pieces.hashes().iter()) {
+        chunk.checksum = Some(CheckSum::new(hash_type, hash.value().to_owned()));
+    }
+
+    Ok(ranges)
+}
+
+pub fn calculate_ranges(total_size: u64, block_size: u64, filename: &Path) -> Vec<ChunkMetaData> {
     let mut remaining_size = total_size;
     let mut current_pos = 0;
 
@@ -83,7 +120,7 @@ pub fn calculate_ranges(total_size: u64, block_size: u64, filename: PathBuf) -> 
         ranges.push(ChunkMetaData::new(
             current_pos,
             current_pos + block_size - 1,
-            filename.clone(),
+            filename.to_path_buf(),
         ));
         current_pos += block_size;
         remaining_size -= block_size;
@@ -91,7 +128,7 @@ pub fn calculate_ranges(total_size: u64, block_size: u64, filename: PathBuf) -> 
     ranges.push(ChunkMetaData::new(
         current_pos,
         current_pos + remaining_size - 1,
-        filename.clone(),
+        filename.to_path_buf(),
     ));
 
     ranges
@@ -103,7 +140,8 @@ mod tests {
 
     #[test]
     fn calulate_ranges_handle_total_size_smaller_than_block_size() {
-        let chunks = calculate_ranges(5, 10, "/x".into());
+        let file: PathBuf = "/x".into();
+        let chunks = calculate_ranges(5, 10, &file);
         assert_eq!(chunks.len(), 1);
         assert_eq!(
             chunks.first(),
@@ -113,7 +151,8 @@ mod tests {
 
     #[test]
     fn calculate_ranges_handles_total_size_equal_block_size() {
-        let chunks = calculate_ranges(10, 10, "/x".into());
+        let file: PathBuf = "/x".into();
+        let chunks = calculate_ranges(10, 10, &file);
         assert_eq!(chunks.len(), 1);
         assert_eq!(
             chunks.first(),
@@ -123,7 +162,8 @@ mod tests {
 
     #[test]
     fn calculate_ranges_handles_total_size_bigger_block_size() {
-        let chunks = calculate_ranges(15, 10, "/x".into());
+        let file: PathBuf = "/x".into();
+        let chunks = calculate_ranges(15, 10, &file);
         assert_eq!(chunks.len(), 2);
         assert_eq!(
             chunks,

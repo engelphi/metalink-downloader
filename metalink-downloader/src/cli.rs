@@ -35,4 +35,19 @@ pub enum Commands {
         #[arg(short, long)]
         target_dir: PathBuf,
     },
+
+    /// Download Metalink
+    DownloadMetalink {
+        /// the metalink to plan the download for
+        #[arg(short, long)]
+        metalink_file: PathBuf,
+
+        /// The target or download directory
+        #[arg(short, long)]
+        target_dir: PathBuf,
+
+        /// overwrite user agent
+        #[arg(long, default_value=concat!("metalink-downloader/", env!("CARGO_PKG_VERSION")))]
+        user_agent: String,
+    },
 }

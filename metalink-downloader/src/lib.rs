@@ -1,8 +1,10 @@
-use anyhow::Result;
 use clap::Parser;
+
+pub use error::{MetalinkDownloadError, Result};
 
 mod cli;
 mod commands;
+mod error;
 mod utils;
 
 use cli::{Cli, Commands};
@@ -22,6 +24,11 @@ impl App {
                 target_dir,
                 user_agent,
             } => Ok(commands::download_file(url, target_dir, user_agent).await?),
+            Commands::DownloadMetalink {
+                metalink_file,
+                target_dir,
+                user_agent,
+            } => Ok(commands::download_metalink(metalink_file, target_dir, user_agent).await?),
         }
     }
 }

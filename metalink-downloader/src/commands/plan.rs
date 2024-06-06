@@ -1,12 +1,16 @@
+use anyhow::anyhow;
+use log::info;
 use metalink::*;
 
-use anyhow::Result;
+use crate::utils::{CheckSum, ChunkMetaData};
+use crate::{utils::to_chunk_metadata, MetalinkDownloadError, Result};
+
 use std::path::{Path, PathBuf};
 
 pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
-    println!("File: {:?}, Target: {:?}", metalink_file, target_dir);
+    info!("File: {:?}, Target: {:?}", metalink_file, target_dir);
     let plan = Plan::new(metalink_file, target_dir)?;
-    println!("{:?}", plan);
+    println!("{:#?}", plan);
     Ok(())
 }
 
@@ -20,7 +24,7 @@ impl Plan {
         let mut files: Vec<FilePlan> = Vec::new();
         let loaded_metalink = Metalink::load_from_file(metalink_file)?;
         for file in loaded_metalink.files() {
-            files.push(FilePlan::new(file, &target_dir));
+            files.push(FilePlan::new(file, &target_dir)?);
         }
 
         Ok(Self { files })
@@ -31,31 +35,58 @@ impl Plan {
 pub struct FilePlan {
     pub target_file: PathBuf,
     pub url: url::Url,
-    pub chunks: Option<Vec<FileChunk>>,
+    pub file_checksums: Option<CheckSum>,
+    pub chunks: Option<Vec<ChunkMetaData>>,
+    pub file_size: Option<u64>,
 }
 
 impl FilePlan {
-    pub fn new(file: &metalink::File, base_download_dir: &Path) -> Self {
-        let chunks: Vec<FileChunk> = Vec::new();
+    pub fn new(file: &metalink::File, base_download_dir: &Path) -> Result<Self> {
+        let target_file = base_download_dir.join(file.name());
+        let file_size: Option<u64> = file.size().map(|size| size.size());
 
-        Self {
-            target_file: base_download_dir.join(file.name()),
-            url: file.urls().unwrap().first().unwrap().url(),
-            chunks: Some(chunks),
-        }
+        let chunks: Option<Vec<ChunkMetaData>> = match file.pieces() {
+            Some(pieces) => {
+                if file_size.is_none() {
+                    return Err(MetalinkDownloadError::Other(anyhow!(
+                        "File size is required when having pieces"
+                    )));
+                }
+                Some(to_chunk_metadata(pieces, &target_file, file_size.unwrap())?)
+            }
+            None => None,
+        };
+
+        // If we have a checksum we want to use the one with strong hash
+        let file_checksums: Option<CheckSum> = match file.hashes() {
+            Some(hashes) => hashes
+                .iter()
+                .filter(|hash| hash.hash_type().is_some())
+                .max_by_key(|hash| hash.hash_type().unwrap())
+                .map(|hash| CheckSum::new(hash.hash_type().unwrap(), hash.value().to_owned())),
+            None => None,
+        };
+
+        let url: url::Url = match file.urls() {
+            Some(urls) if !urls.is_empty() => urls.first().unwrap().url(),
+            Some(_) => {
+                return Err(MetalinkDownloadError::Other(anyhow!(
+                    "File urls should not be empty"
+                )))
+            }
+            None => {
+                return Err(MetalinkDownloadError::Other(anyhow!(
+                    "Non-url based file defintions are not supported"
+                )))
+            }
+        };
+
+        Ok(Self {
+            chunks,
+            file_checksums,
+            url,
+            file_size,
+            target_file,
+        })
     }
 }
-
-#[derive(Debug)]
-pub struct FileChunk {
-    pub start: usize,
-    pub end: usize,
-    pub checksum: String,
-    pub checksum_type: iana_registry_enums::HashFunctionTextualName,
-}
-//
-// impl From<Option<&Pieces>> for Option<Vec<FileChunk>> {
-//     fn from(value: Option<&Pieces>) -> Self {
-//         todo!()
-//     }
-// }
