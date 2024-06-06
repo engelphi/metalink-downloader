@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 // ================================================================================================
 /// Represents list of hash function names from
 /// [IANA Hash Function Textual Names](https://www.iana.org/assignments/hash-function-text-names/hash-function-text-names.xhtml) registry
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub enum HashFunctionTextualName {
     /// IANA name for the MD2 algorithm
     #[serde(rename = "md2")]
@@ -114,6 +114,43 @@ mod tests {
             ("shake256", HashFunctionTextualName::Shake256),
         ]
     });
+
+    #[test]
+    fn test_ord() {
+        let mut hashes = vec![
+            HashFunctionTextualName::Shake256,
+            HashFunctionTextualName::Shake128,
+            HashFunctionTextualName::Sha512,
+            HashFunctionTextualName::Sha384,
+            HashFunctionTextualName::Sha256,
+            HashFunctionTextualName::Sha224,
+            HashFunctionTextualName::Sha1,
+            HashFunctionTextualName::Md5,
+            HashFunctionTextualName::Md2,
+        ];
+
+        assert_eq!(
+            hashes.iter().max(),
+            Some(HashFunctionTextualName::Shake256).as_ref()
+        );
+
+        hashes.sort();
+        assert_eq!(
+            hashes,
+            vec![
+                HashFunctionTextualName::Md2,
+                HashFunctionTextualName::Md5,
+                HashFunctionTextualName::Sha1,
+                HashFunctionTextualName::Sha224,
+                HashFunctionTextualName::Sha256,
+                HashFunctionTextualName::Sha384,
+                HashFunctionTextualName::Sha512,
+                HashFunctionTextualName::Shake128,
+                HashFunctionTextualName::Shake256,
+            ]
+        );
+    }
+
     #[test]
     fn test_from_str() {
         for (name_str, name_enum) in HASH_NAMES.iter() {
