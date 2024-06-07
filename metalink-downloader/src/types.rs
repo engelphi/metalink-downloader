@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use digest::{generic_array::ArrayLength, Digest, OutputSizeUser};
 use iana_registry_enums::HashFunctionTextualName;
+use log::info;
 use metalink::*;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
@@ -200,6 +201,7 @@ impl ChunkMetaData {
     pub fn is_valid_on_disk(&self, mut file: &std::fs::File) -> Result<bool> {
         if let Some(checksum) = self.checksum.as_ref() {
             file.seek(std::io::SeekFrom::Start(self.start))?;
+            info!("Chunk size: {}", self.chunk_size());
             let buffer_size: usize = self.chunk_size() as usize;
             let mut buffer: Vec<u8> = vec![0; buffer_size];
             let count = file.read(buffer.as_mut_slice())?;
@@ -341,7 +343,13 @@ impl CheckSum {
     }
 
     pub fn validate_checksum(&self, data: &bytes::Bytes) -> bool {
-        self.calculate_checksum(data) == self.checksum
+        let res = self.calculate_checksum(data) == self.checksum;
+        if res {
+            log::info!("Checksum validation succeeded");
+        } else {
+            log::info!("Checksum validation failed");
+        }
+        res
     }
 
     pub fn validate_file_checksum(&self, file_on_disk: &std::path::Path) -> bool {
@@ -365,6 +373,8 @@ mod tests {
             chunks.first(),
             Some(ChunkMetaData::new(0, 4, "/x".into())).as_ref()
         );
+
+        assert_eq!(Some(5), chunks.first().map(|chunk| chunk.chunk_size()));
     }
 
     #[test]
@@ -376,6 +386,7 @@ mod tests {
             chunks.first(),
             Some(ChunkMetaData::new(0, 9, "/x".into())).as_ref()
         );
+        assert_eq!(Some(10), chunks.first().map(|chunk| chunk.chunk_size()));
     }
 
     #[test]
@@ -390,6 +401,8 @@ mod tests {
                 ChunkMetaData::new(10, 14, "/x".into())
             ]
         );
+        assert_eq!(10, chunks[0].chunk_size());
+        assert_eq!(5, chunks[1].chunk_size());
     }
 
     #[test]

@@ -128,7 +128,7 @@ async fn download_chunk(
                 return Ok(());
             }
             log::warn!(
-                "Checksum validation for chunk of file {:?} starting at {}",
+                "Checksum validation for chunk of file {:?} starting at {} failed",
                 chunk.filename,
                 chunk.start
             );

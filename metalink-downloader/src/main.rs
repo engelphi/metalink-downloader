@@ -11,7 +11,11 @@ async fn main() -> Result<()> {
 
     let config = Config::builder()
         .appender(Appender::builder().build("logfile", Box::new(logfile)))
-        .build(Root::builder().appender("logfile").build(LevelFilter::Info))
+        .build(
+            Root::builder()
+                .appender("logfile")
+                .build(LevelFilter::Debug),
+        )
         .context(MetalinkDownloadError::Other(anyhow!("")))?;
 
     log4rs::init_config(config).context(MetalinkDownloadError::Other(anyhow!(
