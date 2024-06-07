@@ -16,7 +16,7 @@ pub async fn download_metalink(
     user_agent: String,
 ) -> Result<()> {
     log::info!("==========Start Metalink Download==========");
-    let plan = Plan::new(metalink_file, target_dir)?;
+    let plan = Plan::new(metalink_file, target_dir)?.minimize_plan()?;
 
     let client = make_http_client(user_agent)?;
     let total_size = plan.total_size;

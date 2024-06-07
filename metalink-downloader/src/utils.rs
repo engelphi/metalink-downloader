@@ -1,10 +1,13 @@
 use crate::Result;
 use anyhow::anyhow;
+use bytes::Bytes;
 use digest::generic_array::ArrayLength;
 use digest::{Digest, OutputSizeUser};
 use iana_registry_enums::HashFunctionTextualName;
+use std::io::{BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::usize;
 
 use crate::MetalinkDownloadError;
 
@@ -45,6 +48,26 @@ impl ChunkMetaData {
             .as_ref()
             .map(|checksum| checksum.validate_checksum(bytes))
     }
+
+    pub fn is_valid_on_disk(&self, mut file: &std::fs::File) -> Result<bool> {
+        if let Some(checksum) = self.checksum.as_ref() {
+            file.seek(std::io::SeekFrom::Start(self.start))?;
+            let buffer_size: usize = self.chunk_size() as usize;
+            let mut buffer: Vec<u8> = vec![0; buffer_size];
+            let count = file.read(buffer.as_mut_slice())?;
+            if count != buffer_size {
+                return Ok(false);
+            }
+
+            return Ok(checksum.validate_checksum(&bytes::Bytes::from(buffer)));
+        }
+
+        Ok(false)
+    }
+
+    pub fn chunk_size(&self) -> u64 {
+        self.end - self.start + 1
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -59,6 +82,29 @@ where
     <<D as OutputSizeUser>::OutputSize as std::ops::Add>::Output: ArrayLength<u8>,
 {
     format!("{:x}", D::digest(data))
+}
+
+fn calculate_file_checksum<D: Digest>(path: &std::path::Path) -> Result<String>
+where
+    <D as OutputSizeUser>::OutputSize: std::ops::Add,
+    <<D as OutputSizeUser>::OutputSize as std::ops::Add>::Output: ArrayLength<u8>,
+{
+    let input_file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::new(input_file);
+
+    let digest = {
+        let mut hasher = D::new();
+        let mut buffer = [0; 1024];
+        loop {
+            let count = reader.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+        hasher.finalize()
+    };
+    Ok(format!("{:x}", digest))
 }
 
 impl CheckSum {
@@ -82,8 +128,28 @@ impl CheckSum {
         }
     }
 
+    fn calculate_file_checksum(&self, path: &std::path::Path) -> Result<String> {
+        match self.hash_type {
+            HashFunctionTextualName::Md2 => calculate_file_checksum::<md2::Md2>(path),
+            HashFunctionTextualName::Md5 => calculate_file_checksum::<md5::Md5>(path),
+            HashFunctionTextualName::Sha1 => calculate_file_checksum::<sha1_checked::Sha1>(path),
+            HashFunctionTextualName::Sha224 => calculate_file_checksum::<sha2::Sha224>(path),
+            HashFunctionTextualName::Sha256 => calculate_file_checksum::<sha2::Sha256>(path),
+            HashFunctionTextualName::Sha384 => calculate_file_checksum::<sha2::Sha384>(path),
+            HashFunctionTextualName::Sha512 => calculate_file_checksum::<sha2::Sha512>(path),
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn validate_checksum(&self, data: &bytes::Bytes) -> bool {
         self.calculate_checksum(data) == self.checksum
+    }
+
+    pub fn validate_file_checksum(&self, file_on_disk: &std::path::Path) -> bool {
+        match self.calculate_file_checksum(file_on_disk) {
+            Ok(checksum) => checksum == self.checksum,
+            _ => false,
+        }
     }
 }
 

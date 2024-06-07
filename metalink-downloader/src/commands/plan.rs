@@ -11,10 +11,13 @@ pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
     info!("File: {:?}, Target: {:?}", metalink_file, target_dir);
     let plan = Plan::new(metalink_file, target_dir)?;
     println!("{:#?}", plan);
+
+    let minimized_plan = plan.minimize_plan()?;
+    println!("{:#?}", minimized_plan);
     Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Plan {
     pub files: Vec<FilePlan>,
     pub total_size: u64,
@@ -34,9 +37,71 @@ impl Plan {
 
         Ok(Self { files, total_size })
     }
+
+    /// Shrink the plan so the only files and chunks that need to
+    /// be downloaded are left
+    pub fn minimize_plan(self) -> Result<Plan> {
+        let mut minimized_plan = Plan::default();
+
+        for file in self.files {
+            if !file.target_file.exists() {
+                minimized_plan.files.push(file);
+            } else {
+                if let Some(chunks) = file.chunks {
+                    let file_on_disk = std::fs::File::open(&file.target_file)?;
+                    let mut minimized_chunks: Vec<ChunkMetaData> = Vec::new();
+                    for chunk in chunks {
+                        if !chunk.is_valid_on_disk(&file_on_disk)? {
+                            minimized_chunks.push(chunk);
+                        }
+                    }
+
+                    if !minimized_chunks.is_empty() {
+                        minimized_plan.files.push(FilePlan {
+                            target_file: file.target_file,
+                            url: file.url,
+                            file_checksums: file.file_checksums,
+                            chunks: Some(minimized_chunks),
+                            file_size: file.file_size,
+                        })
+                    }
+                } else if let Some(checksum) = file.file_checksums.as_ref() {
+                    if !checksum.validate_file_checksum(&file.target_file) {
+                        minimized_plan.files.push(file);
+                    }
+                } else {
+                    // no checksums to validate need to assume that the file is broken an
+                    // redownload it
+                    minimized_plan.files.push(file);
+                }
+            }
+        }
+
+        // After minimizing the plan total size calculation gets a bit complicated
+        // If we have a file without chunks then we take the file size if the file
+        // has chunks we need to sum up the size of the chunks. As only those parts
+        // will be downloaded
+        let mut total_size: u64 = 0;
+
+        for file in &minimized_plan.files {
+            if let Some(chunks) = file.chunks.as_ref() {
+                for chunk in chunks {
+                    total_size += chunk.chunk_size();
+                }
+            } else {
+                // NOTE: if a file element in the metalink does not have a file size this
+                // might fail
+                total_size += file.file_size.unwrap()
+            }
+        }
+
+        minimized_plan.total_size = total_size;
+
+        Ok(minimized_plan)
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FilePlan {
     pub target_file: PathBuf,
     pub url: url::Url,
