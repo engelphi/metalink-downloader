@@ -46,34 +46,32 @@ impl Plan {
         for file in self.files {
             if !file.target_file.exists() {
                 minimized_plan.files.push(file);
-            } else {
-                if let Some(chunks) = file.chunks {
-                    let file_on_disk = std::fs::File::open(&file.target_file)?;
-                    let mut minimized_chunks: Vec<ChunkMetaData> = Vec::new();
-                    for chunk in chunks {
-                        if !chunk.is_valid_on_disk(&file_on_disk)? {
-                            minimized_chunks.push(chunk);
-                        }
+            } else if let Some(chunks) = file.chunks {
+                let file_on_disk = std::fs::File::open(&file.target_file)?;
+                let mut minimized_chunks: Vec<ChunkMetaData> = Vec::new();
+                for chunk in chunks {
+                    if !chunk.is_valid_on_disk(&file_on_disk)? {
+                        minimized_chunks.push(chunk);
                     }
+                }
 
-                    if !minimized_chunks.is_empty() {
-                        minimized_plan.files.push(FilePlan {
-                            target_file: file.target_file,
-                            url: file.url,
-                            file_checksums: file.file_checksums,
-                            chunks: Some(minimized_chunks),
-                            file_size: file.file_size,
-                        })
-                    }
-                } else if let Some(checksum) = file.file_checksums.as_ref() {
-                    if !checksum.validate_file_checksum(&file.target_file) {
-                        minimized_plan.files.push(file);
-                    }
-                } else {
-                    // no checksums to validate need to assume that the file is broken an
-                    // redownload it
+                if !minimized_chunks.is_empty() {
+                    minimized_plan.files.push(FilePlan {
+                        target_file: file.target_file,
+                        url: file.url,
+                        file_checksums: file.file_checksums,
+                        chunks: Some(minimized_chunks),
+                        file_size: file.file_size,
+                    })
+                }
+            } else if let Some(checksum) = file.file_checksums.as_ref() {
+                if !checksum.validate_file_checksum(&file.target_file) {
                     minimized_plan.files.push(file);
                 }
+            } else {
+                // no checksums to validate need to assume that the file is broken an
+                // redownload it
+                minimized_plan.files.push(file);
             }
         }
 

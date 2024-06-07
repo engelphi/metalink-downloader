@@ -1,10 +1,9 @@
 use crate::Result;
 use anyhow::anyhow;
-use bytes::Bytes;
 use digest::generic_array::ArrayLength;
 use digest::{Digest, OutputSizeUser};
 use iana_registry_enums::HashFunctionTextualName;
-use std::io::{BufReader, Read, Seek};
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::usize;
