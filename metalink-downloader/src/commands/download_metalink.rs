@@ -1,13 +1,12 @@
-use crate::commands::download_file::{segregrated_download, simple_download};
-use crate::commands::plan::Plan;
-use crate::utils::make_http_client;
+use crate::http::*;
+use crate::types::Plan;
 use crate::Result;
 use anyhow::Context;
 use std::fmt::Write;
 use std::path::PathBuf;
 use tokio::task::JoinHandle;
 
-use crate::commands::ProgressUpdate;
+use crate::types::ProgressUpdate;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 
 pub async fn download_metalink(

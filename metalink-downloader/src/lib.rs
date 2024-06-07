@@ -5,7 +5,8 @@ pub use error::{MetalinkDownloadError, Result};
 mod cli;
 mod commands;
 mod error;
-mod utils;
+mod http;
+mod types;
 
 use cli::{Cli, Commands};
 
