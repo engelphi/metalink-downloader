@@ -7,7 +7,12 @@ use std::path::PathBuf;
 
 const ONE_MB: u64 = 1048576;
 
-pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: String) -> Result<()> {
+pub async fn download_file(
+    url: url::Url,
+    target_dir: PathBuf,
+    user_agent: String,
+    max_threads: u64,
+) -> Result<()> {
     let client = make_http_client(user_agent)?;
     let url = reqwest::Url::parse(url.as_str())?;
     let path = PathBuf::from(url.path());
@@ -22,7 +27,16 @@ pub async fn download_file(url: url::Url, target_dir: PathBuf, user_agent: Strin
                 simple_download(&client, url.clone(), target_file).await
             } else {
                 let ranges = ChunkMetaData::calculate_ranges(size, ONE_MB, &target_file);
-                segregrated_download(&client, url.clone(), target_file, size, &ranges, None).await
+                segregrated_download(
+                    &client,
+                    url.clone(),
+                    target_file,
+                    size,
+                    &ranges,
+                    None,
+                    max_threads,
+                )
+                .await
             }
         }
         None => simple_download(&client, url.clone(), target_file).await,

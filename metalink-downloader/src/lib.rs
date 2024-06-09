@@ -24,12 +24,22 @@ impl App {
                 url,
                 target_dir,
                 user_agent,
-            } => Ok(commands::download_file(url, target_dir, user_agent).await?),
+                max_threads,
+            } => Ok(commands::download_file(url, target_dir, user_agent, max_threads).await?),
             Commands::DownloadMetalink {
                 metalink_file,
                 target_dir,
                 user_agent,
-            } => Ok(commands::download_metalink(metalink_file, target_dir, user_agent).await?),
+                max_threads_per_file,
+                max_parallel_files,
+            } => Ok(commands::download_metalink(
+                metalink_file,
+                target_dir,
+                user_agent,
+                max_threads_per_file,
+                max_parallel_files,
+            )
+            .await?),
         }
     }
 }

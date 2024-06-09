@@ -23,6 +23,10 @@ pub enum Commands {
         /// overwrite user agent
         #[arg(long, default_value=concat!("metalink-downloader/", env!("CARGO_PKG_VERSION")))]
         user_agent: String,
+
+        /// Max number of download threads to use
+        #[arg(long, default_value_t=2, value_parser = clap::value_parser!(u64).range(2..))]
+        max_threads: u64,
     },
 
     /// Dryrun the planning phase
@@ -49,5 +53,13 @@ pub enum Commands {
         /// overwrite user agent
         #[arg(long, default_value=concat!("metalink-downloader/", env!("CARGO_PKG_VERSION")))]
         user_agent: String,
+
+        /// Max number of download threads to use per file
+        #[arg(long, default_value_t=2, value_parser = clap::value_parser!(u64).range(2..))]
+        max_threads_per_file: u64,
+
+        /// How many files to download in parallel
+        #[arg(long, default_value_t=1, value_parser = clap::value_parser!(u64).range(1..))]
+        max_parallel_files: u64,
     },
 }

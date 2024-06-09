@@ -186,8 +186,9 @@ pub(crate) async fn segregrated_download(
     size: u64,
     ranges: &[ChunkMetaData],
     prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
+    max_threads: u64,
 ) -> Result<()> {
-    let available_parallelism = std::thread::available_parallelism()?.get() - 1;
+    let available_parallelism: usize = (max_threads - 1) as usize;
     let (tx, rx) = tokio::sync::mpsc::channel::<Command>(available_parallelism);
     let file_writer_task: JoinHandle<Result<()>> =
         tokio::spawn(async move { file_writer_task(&target_file, size, rx, prog_tx).await });
