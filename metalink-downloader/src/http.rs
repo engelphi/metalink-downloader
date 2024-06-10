@@ -1,4 +1,4 @@
-use crate::types::*;
+use crate::types::{ChunkMetaData, Command, ProgressUpdate};
 use crate::Result;
 
 use anyhow::{anyhow, Context};
@@ -30,7 +30,7 @@ fn request_range(
         .get(url.clone())
         .header(
             reqwest::header::RANGE,
-            reqwest::header::HeaderValue::from_str(&format!("bytes={}-{}", start, end))
+            reqwest::header::HeaderValue::from_str(&format!("bytes={start}-{end}"))
                 .expect("Failed to construct range header"),
         )
         .send()
@@ -41,26 +41,20 @@ pub(crate) async fn simple_download(
     url: reqwest::Url,
     target_file: PathBuf,
 ) -> Result<()> {
-    info!(
-        "Simple Download: Target file={:?}, Url: {:?}",
-        target_file, url
-    );
+    info!("Simple Download: Target file={target_file:?}, Url: {url:?}");
     let response = client.get(url).send().await?;
     // Note proper error handling needed if parent is None
     std::fs::create_dir_all(target_file.parent().unwrap())?;
     let mut output_file = std::fs::File::create(target_file.clone()).context(format!(
-        "Failed to create file simple download: {:#?}",
-        target_file
+        "Failed to create file simple download: {target_file:#?}"
     ))?;
     output_file
         .write_all(&response.bytes().await?)
         .context(format!(
-            "Failed to write file simple download: {:#?}",
-            output_file
+            "Failed to write file simple download: {output_file:#?}"
         ))?;
     output_file.flush().context(format!(
-        "Failed to flush file simple download: {:#?}",
-        output_file
+        "Failed to flush file simple download: {output_file:#?}"
     ))?;
 
     Ok(())
@@ -84,7 +78,7 @@ pub(crate) async fn get_file_size(
                 .parse()
                 .context("Failed to parse Content-Length header")?,
         )),
-        _ => Ok(None),
+        reqwest::header::Entry::Vacant(_) => Ok(None),
     }
 }
 
@@ -94,14 +88,7 @@ async fn download_chunk(
     url: &reqwest::Url,
     tx: &tokio::sync::mpsc::UnboundedSender<Command>,
 ) -> Result<()> {
-    if !chunk.has_checksum() {
-        let response = request_range(client, url, chunk.start, chunk.end).await?;
-        let _ = tx.send(Command::WriteFileChunk {
-            offset: chunk.start,
-            downloaded_bytes: response.bytes().await?,
-        });
-        return Ok(());
-    } else {
+    if chunk.has_checksum() {
         // retry at most three times
         for _ in 0..3 {
             let response = request_range(client, url, chunk.start, chunk.end).await?;
@@ -129,6 +116,13 @@ async fn download_chunk(
                 chunk.start
             );
         }
+    } else {
+        let response = request_range(client, url, chunk.start, chunk.end).await?;
+        let _ = tx.send(Command::WriteFileChunk {
+            offset: chunk.start,
+            downloaded_bytes: response.bytes().await?,
+        });
+        return Ok(());
     }
 
     Err(anyhow!("Unable to download chunk").into())
@@ -143,7 +137,7 @@ async fn file_writer_task(
     // Note proper error handling needed if parent is None
     std::fs::create_dir_all(target_file.parent().unwrap())?;
     let mut file = std::fs::File::create(target_file.clone())
-        .context(format!("Failed to create file: {:#?}", target_file))?;
+        .context(format!("Failed to create file: {target_file:#?}"))?;
     file.set_len(size)?;
     let mut bytes_written = 0;
     while let Some(cmd) = rx.recv().await {
@@ -154,10 +148,10 @@ async fn file_writer_task(
                 downloaded_bytes,
             } => {
                 file.seek(std::io::SeekFrom::Start(offset))
-                    .context(format!("Failed to seek file: {:#?}", file))?;
+                    .context(format!("Failed to seek file: {file:#?}"))?;
                 let bytes = file
                     .write(&downloaded_bytes)
-                    .context(format!("Failed to write file: {:#?}", file))?;
+                    .context(format!("Failed to write file: {file:#?}"))?;
                 bytes_written += bytes;
 
                 info!(
@@ -173,7 +167,7 @@ async fn file_writer_task(
         }
     }
     file.flush()
-        .context(format!("Failed to flush file: {:#?}", file))?;
+        .context(format!("Failed to flush file: {file:#?}"))?;
     Ok(())
 }
 
@@ -184,7 +178,7 @@ pub(crate) async fn segregrated_download(
     size: u64,
     ranges: &[ChunkMetaData],
     prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
-    max_threads: u64,
+    max_threads: u16,
 ) -> Result<()> {
     let available_parallelism: usize = (max_threads - 1) as usize;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Command>();

@@ -23,9 +23,7 @@ anyhow = "1"
 thiserror = "1"
 
 # utilities
-itertools = "0.13"
 bytes = "1"
-hex = "0.4"
 
 # checksum
 digest = "0.10"
@@ -33,7 +31,6 @@ md2 = "0.10"
 md-5 = "0.10"
 sha1-checked = "0.10"
 sha2 = "0.10"
-sha3 = "0.10" 
 
 #tracing/logging
 log = "0.4"

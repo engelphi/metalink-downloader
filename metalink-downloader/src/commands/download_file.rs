@@ -1,17 +1,17 @@
-use crate::http::*;
+use crate::http::{get_file_size, make_http_client, segregrated_download, simple_download};
 use crate::types::ChunkMetaData;
 use crate::Result;
 
 use anyhow::anyhow;
 use std::path::PathBuf;
 
-const ONE_MB: u64 = 1048576;
+const ONE_MB: u64 = 1_048_576;
 
 pub async fn download_file(
     url: url::Url,
     target_dir: PathBuf,
     user_agent: String,
-    max_threads: u64,
+    max_threads: u16,
 ) -> Result<()> {
     let client = make_http_client(user_agent)?;
     let url = reqwest::Url::parse(url.as_str())?;

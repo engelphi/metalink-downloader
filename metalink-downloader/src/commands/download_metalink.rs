@@ -1,4 +1,4 @@
-use crate::http::*;
+use crate::http::{make_http_client, segregrated_download, simple_download};
 use crate::types::{FilePlan, Plan};
 use crate::Result;
 use anyhow::Context;
@@ -13,10 +13,10 @@ pub async fn download_metalink(
     metalink_file: PathBuf,
     target_dir: PathBuf,
     user_agent: String,
-    max_threads_per_file: u64,
+    max_threads_per_file: u16,
 ) -> Result<()> {
     log::info!("==========Start Metalink Download==========");
-    let plan = Plan::new(metalink_file, target_dir)?.minimize_plan()?;
+    let plan = Plan::new(metalink_file, &target_dir)?.minimize_plan()?;
 
     let client = make_http_client(user_agent)?;
     let total_size = plan.total_size;
@@ -55,7 +55,7 @@ async fn download_file_task(
     client: &reqwest::Client,
     file: &FilePlan,
     tx: &tokio::sync::mpsc::UnboundedSender<ProgressUpdate>,
-    max_threads_per_file: u64,
+    max_threads_per_file: u16,
 ) -> Result<()> {
     log::info!("Start downloading: {:?}", file.target_file);
     if let Some(chunks) = file.chunks.as_ref() {

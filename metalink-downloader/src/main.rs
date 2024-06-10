@@ -3,7 +3,7 @@ use log::LevelFilter;
 use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Root};
 
-use metalink_downloader::*;
+use metalink_downloader::{App, MetalinkDownloadError, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {

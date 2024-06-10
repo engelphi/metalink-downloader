@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use digest::{generic_array::ArrayLength, Digest, OutputSizeUser};
 use iana_registry_enums::HashFunctionTextualName;
 use log::info;
-use metalink::*;
+use metalink::Metalink;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
@@ -31,11 +31,11 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn new(metalink_file: PathBuf, target_dir: PathBuf) -> Result<Self> {
+    pub fn new(metalink_file: PathBuf, target_dir: &Path) -> Result<Self> {
         let mut files: Vec<FilePlan> = Vec::new();
         let loaded_metalink = Metalink::load_from_file(metalink_file)?;
         for file in loaded_metalink.files() {
-            files.push(FilePlan::new(file, &target_dir)?);
+            files.push(FilePlan::new(file, target_dir)?);
         }
 
         let total_size = files
@@ -69,7 +69,7 @@ impl Plan {
                         file_checksums: file.file_checksums,
                         chunks: Some(minimized_chunks),
                         file_size: file.file_size,
-                    })
+                    });
                 }
             } else if let Some(checksum) = file.file_checksums.as_ref() {
                 if !checksum.validate_file_checksum(&file.target_file) {
@@ -96,7 +96,7 @@ impl Plan {
             } else {
                 // NOTE: if a file element in the metalink does not have a file size this
                 // might fail
-                total_size += file.file_size.unwrap()
+                total_size += file.file_size.unwrap();
             }
         }
 
@@ -118,7 +118,7 @@ pub struct FilePlan {
 impl FilePlan {
     pub fn new(file: &metalink::File, base_download_dir: &Path) -> Result<Self> {
         let target_file = base_download_dir.join(file.name());
-        let file_size: Option<u64> = file.size().map(|size| size.size());
+        let file_size: Option<u64> = file.size().map(metalink::Size::size);
 
         let chunks: Option<Vec<ChunkMetaData>> = match file.pieces() {
             Some(pieces) => {
@@ -161,11 +161,11 @@ impl FilePlan {
         };
 
         Ok(Self {
-            chunks,
-            file_checksums,
-            url,
-            file_size,
             target_file,
+            url,
+            file_checksums,
+            chunks,
+            file_size,
         })
     }
 }
@@ -305,7 +305,7 @@ where
         }
         hasher.finalize()
     };
-    Ok(format!("{:x}", digest))
+    Ok(format!("{digest:x}"))
 }
 
 impl CheckSum {
