@@ -13,8 +13,8 @@ use tokio::task::JoinHandle;
 pub(crate) fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
     Ok(reqwest::ClientBuilder::new()
         .https_only(true)
-        //.http2_prior_knowledge()
         .gzip(true)
+        .zstd(true)
         .timeout(Duration::from_secs(20))
         .user_agent(user_agent)
         .build()?)
@@ -92,16 +92,14 @@ async fn download_chunk(
     chunk: &ChunkMetaData,
     client: &reqwest::Client,
     url: &reqwest::Url,
-    tx: &tokio::sync::mpsc::Sender<Command>,
+    tx: &tokio::sync::mpsc::UnboundedSender<Command>,
 ) -> Result<()> {
     if !chunk.has_checksum() {
         let response = request_range(client, url, chunk.start, chunk.end).await?;
-        let _ = tx
-            .send(Command::WriteFileChunk {
-                offset: chunk.start,
-                downloaded_bytes: response.bytes().await?,
-            })
-            .await;
+        let _ = tx.send(Command::WriteFileChunk {
+            offset: chunk.start,
+            downloaded_bytes: response.bytes().await?,
+        });
         return Ok(());
     } else {
         // retry at most three times
@@ -119,12 +117,10 @@ async fn download_chunk(
                     chunk.filename,
                     chunk.start
                 );
-                let _ = tx
-                    .send(Command::WriteFileChunk {
-                        offset: chunk.start,
-                        downloaded_bytes: bytes,
-                    })
-                    .await;
+                let _ = tx.send(Command::WriteFileChunk {
+                    offset: chunk.start,
+                    downloaded_bytes: bytes,
+                });
                 return Ok(());
             }
             log::warn!(
@@ -141,13 +137,14 @@ async fn download_chunk(
 async fn file_writer_task(
     target_file: &PathBuf,
     size: u64,
-    mut rx: tokio::sync::mpsc::Receiver<Command>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
 ) -> Result<()> {
     // Note proper error handling needed if parent is None
     std::fs::create_dir_all(target_file.parent().unwrap())?;
     let mut file = std::fs::File::create(target_file.clone())
         .context(format!("Failed to create file: {:#?}", target_file))?;
+    file.set_len(size)?;
     let mut bytes_written = 0;
     while let Some(cmd) = rx.recv().await {
         match cmd {
@@ -162,8 +159,7 @@ async fn file_writer_task(
                     .write(&downloaded_bytes)
                     .context(format!("Failed to write file: {:#?}", file))?;
                 bytes_written += bytes;
-                file.flush()
-                    .context(format!("Failed to flush file: {:#?}", file))?;
+
                 info!(
                     "Progress: {}%",
                     (bytes_written as f64 / size as f64) * 100f64
@@ -176,6 +172,8 @@ async fn file_writer_task(
             }
         }
     }
+    file.flush()
+        .context(format!("Failed to flush file: {:#?}", file))?;
     Ok(())
 }
 
@@ -189,7 +187,7 @@ pub(crate) async fn segregrated_download(
     max_threads: u64,
 ) -> Result<()> {
     let available_parallelism: usize = (max_threads - 1) as usize;
-    let (tx, rx) = tokio::sync::mpsc::channel::<Command>(available_parallelism);
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
     let file_writer_task: JoinHandle<Result<()>> =
         tokio::spawn(async move { file_writer_task(&target_file, size, rx, prog_tx).await });
 
@@ -216,7 +214,6 @@ pub(crate) async fn segregrated_download(
     }
 
     tx.send(Command::FinishWriting)
-        .await
         .context("Failed to send finished command to file writer")?;
     let _ = file_writer_task.await.context("File writer task failed")?;
 

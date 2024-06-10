@@ -31,13 +31,11 @@ impl App {
                 target_dir,
                 user_agent,
                 max_threads_per_file,
-                max_parallel_files,
             } => Ok(commands::download_metalink(
                 metalink_file,
                 target_dir,
                 user_agent,
                 max_threads_per_file,
-                max_parallel_files,
             )
             .await?),
         }

@@ -14,7 +14,6 @@ pub async fn download_metalink(
     target_dir: PathBuf,
     user_agent: String,
     max_threads_per_file: u64,
-    max_parallel_files: u64,
 ) -> Result<()> {
     log::info!("==========Start Metalink Download==========");
     let plan = Plan::new(metalink_file, target_dir)?.minimize_plan()?;
@@ -25,24 +24,22 @@ pub async fn download_metalink(
     let progress_reporter: JoinHandle<Result<()>> =
         tokio::spawn(async move { progress_reporter_task(prog_rx, total_size).await });
 
-    for chunk in plan.files.chunks(max_parallel_files as usize) {
-        let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
-        for file in chunk {
-            let cloned_file = file.clone();
-            let cloned_tx = prog_tx.clone();
-            let cloned_client = client.clone();
-            tasks.push(tokio::spawn(async move {
-                download_file_task(
-                    &cloned_client,
-                    &cloned_file,
-                    &cloned_tx,
-                    max_threads_per_file,
-                )
-                .await
-            }));
-        }
-        let _ = futures::future::join_all(tasks).await;
+    let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
+    for file in plan.files {
+        let cloned_file = file.clone();
+        let cloned_tx = prog_tx.clone();
+        let cloned_client = client.clone();
+        tasks.push(tokio::spawn(async move {
+            download_file_task(
+                &cloned_client,
+                &cloned_file,
+                &cloned_tx,
+                max_threads_per_file,
+            )
+            .await
+        }));
     }
+    let _ = futures::future::join_all(tasks).await;
 
     prog_tx
         .send(ProgressUpdate::Finished)

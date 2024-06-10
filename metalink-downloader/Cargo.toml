@@ -13,7 +13,7 @@ iana-registry-enums = { path = "../iana-registry-enums" }
 clap = { version = "4", features = ["derive"] }
 
 # http 
-reqwest = { version = "0.12", features = ["http2", "gzip", "stream", "native-tls-alpn"] }
+reqwest = { version = "0.12", features = ["http2", "gzip", "stream", "native-tls-alpn", "zstd"] }
 tokio = { version = "1", features = ["full"] }
 url = { version = "2.5", features = ["serde"] }
 futures = "0.3"
