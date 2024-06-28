@@ -1,0 +1,1 @@
+cargo clippy -- -D clippy::perf -D clippy::correctness -D clippy::cargo_common_metadata -D clippy::wildcard_dependencies -D clippy::complexity

@@ -2,6 +2,12 @@
 name = "metalink-downloader"
 version = "0.1.0"
 edition = "2021"
+description = "Small download utility for downloading based on Metalink (RFC5854) files"
+license = "MIT"
+repository = "https://github.com/engelphi/metalink-downloader"
+readme = "README.md"
+keywords = ["metalink", "download", "cli"]
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,10 +23,12 @@ reqwest = { version = "0.12", features = ["http2", "gzip", "stream", "native-tls
 tokio = { version = "1", features = ["full"] }
 url = { version = "2.5", features = ["serde"] }
 futures = "0.3"
+async-channel = "2.3.1"
 
 # error handling
 anyhow = "1"
 thiserror = "1"
+miette = { version = "7", features = ["fancy"] }
 
 # utilities
 bytes = "1"
@@ -37,3 +45,8 @@ log = "0.4"
 log4rs = "1"
 
 indicatif = "0.17"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["user-hooks"]

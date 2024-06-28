@@ -2,6 +2,12 @@
 name = "metalink"
 version = "0.1.0"
 edition = "2021"
+description = "Provides a parser for metalinks as defined in RFC5854"
+license = "MIT"
+repository = "https://github.com/engelphi/metalink-downloader"
+readme = "README.md"
+keywords = ["metalink", "RFC5854", "deserialization"]
+categories = ["parsing", "parser-implementations", "web-programming"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
