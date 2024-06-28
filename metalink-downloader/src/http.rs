@@ -1,18 +1,19 @@
 use crate::types::{ChunkMetaData, Command, ProgressUpdate};
-use crate::Result;
+use crate::{MetalinkDownloadError, Result};
 
 use anyhow::{anyhow, Context};
 use log::info;
-use std::future::Future;
 use std::io::{Seek, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 
+/// Creates a reqwest client to be used by the downloader tasks
 pub(crate) fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
     Ok(reqwest::ClientBuilder::new()
         .https_only(true)
+        .http2_prior_knowledge()
         .gzip(true)
         .zstd(true)
         .timeout(Duration::from_secs(20))
@@ -20,13 +21,13 @@ pub(crate) fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
         .build()?)
 }
 
-fn request_range(
+async fn request_range(
     client: &reqwest::Client,
     url: &reqwest::Url,
     start: u64,
     end: u64,
-) -> impl Future<Output = std::result::Result<reqwest::Response, reqwest::Error>> {
-    client
+) -> Result<reqwest::Response> {
+    Ok(client
         .get(url.clone())
         .header(
             reqwest::header::RANGE,
@@ -34,6 +35,7 @@ fn request_range(
                 .expect("Failed to construct range header"),
         )
         .send()
+        .await?)
 }
 
 pub(crate) async fn simple_download(
@@ -45,17 +47,14 @@ pub(crate) async fn simple_download(
     let response = client.get(url).send().await?;
     // Note proper error handling needed if parent is None
     std::fs::create_dir_all(target_file.parent().unwrap())?;
-    let mut output_file = std::fs::File::create(target_file.clone()).context(format!(
-        "Failed to create file simple download: {target_file:#?}"
-    ))?;
+    let mut output_file = std::fs::File::create(target_file.clone())
+        .with_context(|| format!("Failed to create file simple download: {target_file:#?}"))?;
     output_file
         .write_all(&response.bytes().await?)
-        .context(format!(
-            "Failed to write file simple download: {output_file:#?}"
-        ))?;
-    output_file.flush().context(format!(
-        "Failed to flush file simple download: {output_file:#?}"
-    ))?;
+        .with_context(|| format!("Failed to write file simple download: {output_file:#?}"))?;
+    output_file
+        .flush()
+        .with_context(|| format!("Failed to flush file simple download: {output_file:#?}"))?;
 
     Ok(())
 }
@@ -74,9 +73,9 @@ pub(crate) async fn get_file_size(
             entry
                 .get()
                 .to_str()
-                .context("Failed convert header Content-Length header value to string")?
+                .with_context(|| "Failed convert header Content-Length header value to string")?
                 .parse()
-                .context("Failed to parse Content-Length header")?,
+                .with_context(|| "Failed to parse Content-Length header")?,
         )),
         reqwest::header::Entry::Vacant(_) => Ok(None),
     }
@@ -104,10 +103,16 @@ async fn download_chunk(
                     chunk.filename,
                     chunk.start
                 );
-                let _ = tx.send(Command::WriteFileChunk {
+                tx.send(Command::WriteFileChunk {
                     offset: chunk.start,
                     downloaded_bytes: bytes,
-                });
+                })
+                .with_context(|| {
+                    format!(
+                        "Failed to send downloaded chunk of {:?} starting at: {}",
+                        chunk.filename, chunk.start
+                    )
+                })?;
                 return Ok(());
             }
             log::warn!(
@@ -118,10 +123,16 @@ async fn download_chunk(
         }
     } else {
         let response = request_range(client, url, chunk.start, chunk.end).await?;
-        let _ = tx.send(Command::WriteFileChunk {
+        tx.send(Command::WriteFileChunk {
             offset: chunk.start,
             downloaded_bytes: response.bytes().await?,
-        });
+        })
+        .with_context(|| {
+            format!(
+                "Failed to send unvalidated downloaded chunk of {:?}, starting at: {}",
+                chunk.filename, chunk.start
+            )
+        })?;
         return Ok(());
     }
 
@@ -137,7 +148,7 @@ async fn file_writer_task(
     // Note proper error handling needed if parent is None
     std::fs::create_dir_all(target_file.parent().unwrap())?;
     let mut file = std::fs::File::create(target_file.clone())
-        .context(format!("Failed to create file: {target_file:#?}"))?;
+        .with_context(|| format!("Failed to create file: {target_file:#?}"))?;
     file.set_len(size)?;
     let mut bytes_written = 0;
     while let Some(cmd) = rx.recv().await {
@@ -148,26 +159,25 @@ async fn file_writer_task(
                 downloaded_bytes,
             } => {
                 file.seek(std::io::SeekFrom::Start(offset))
-                    .context(format!("Failed to seek file: {file:#?}"))?;
+                    .with_context(|| format!("Failed to seek file: {file:#?}"))?;
                 let bytes = file
                     .write(&downloaded_bytes)
-                    .context(format!("Failed to write file: {file:#?}"))?;
+                    .with_context(|| format!("Failed to write file: {file:#?}"))?;
                 bytes_written += bytes;
 
                 info!(
                     "Progress: {}%",
                     (bytes_written as f64 / size as f64) * 100f64
                 );
-
+                file.flush()
+                    .with_context(|| format!("Failed to flush file: {file:#?}"))?;
                 if let Some(tx) = &prog_tx {
                     tx.send(ProgressUpdate::Progressed(bytes as u64))
-                        .context("Failed to send progress update".to_string())?;
+                        .with_context(|| "Failed to send progress update")?;
                 }
             }
         }
     }
-    file.flush()
-        .context(format!("Failed to flush file: {file:#?}"))?;
     Ok(())
 }
 
@@ -182,7 +192,7 @@ pub(crate) async fn segregrated_download(
 ) -> Result<()> {
     let available_parallelism: usize = (max_threads - 1) as usize;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
-    let file_writer_task: JoinHandle<Result<()>> =
+    let file_writer: JoinHandle<Result<()>> =
         tokio::spawn(async move { file_writer_task(&target_file, size, rx, prog_tx).await });
 
     for chunk in ranges.chunks(available_parallelism) {
@@ -208,8 +218,112 @@ pub(crate) async fn segregrated_download(
     }
 
     tx.send(Command::FinishWriting)
-        .context("Failed to send finished command to file writer")?;
-    let _ = file_writer_task.await.context("File writer task failed")?;
+        .with_context(|| "Failed to send finished command to file writer")?;
+    file_writer
+        .await
+        .with_context(|| "File writer task failed")??;
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct DownloadJob {
+    /// Url to download from
+    url: reqwest::Url,
+    /// The chunk to download
+    chunk: ChunkMetaData,
+    /// Sender for forwarding the download bytes to the file writer
+    downloaded_bytes_tx: tokio::sync::mpsc::UnboundedSender<Command>,
+    /// channel for reporting that a task is finished
+    job_done_tx: tokio::sync::oneshot::Sender<()>,
+}
+
+async fn download_worker(
+    client: &reqwest::Client,
+    job_queue: &async_channel::Receiver<DownloadJob>,
+    cancellation_token: tokio_util::sync::CancellationToken,
+) -> Result<()> {
+    loop {
+        tokio::select! {
+            job = job_queue.recv() => {
+                match job {
+                    Ok(job) => {
+                        info!("Start downloading chunk starting at: {}", job.chunk.start);
+                        download_chunk(&job.chunk, client, &job.url, &job.downloaded_bytes_tx).await.with_context(|| "Chunk download failed")?;
+                        info!("Finish downloading chunk starting at: {}", job.chunk.start);
+                        job.job_done_tx.send(()).map_err(|_| MetalinkDownloadError::Other(anyhow!("Failed to send job finished message"))).with_context(|| "Failed to send job finished message")?;
+                    }
+                    Err(e) => {
+                        info!("Failed to recv job: {e}");
+                        return Err(MetalinkDownloadError::Other(anyhow!("Failed to recv job: {e}")));
+                    }
+                }
+            },
+            _ = cancellation_token.cancelled() => {
+                info!("Shutting down download worker");
+                return Ok(());
+            }
+        }
+    }
+}
+
+pub(crate) async fn download(
+    client: &reqwest::Client,
+    url: reqwest::Url,
+    target_file: PathBuf,
+    size: u64,
+    ranges: &[ChunkMetaData],
+    prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
+    max_threads: u16,
+) -> Result<()> {
+    let available_parallelism: usize = std::cmp::min((max_threads - 1) as usize, ranges.len());
+
+    let (job_tx, job_rx) = async_channel::bounded::<DownloadJob>(available_parallelism);
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+
+    let tracker = tokio_util::task::TaskTracker::new();
+    for _ in 0..available_parallelism {
+        let cloned_job_rx = job_rx.clone();
+        let cloned_client = client.clone();
+        let cloned_token = cancellation_token.clone();
+        tracker.spawn(async move {
+            download_worker(&cloned_client, &cloned_job_rx, cloned_token).await
+        });
+    }
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
+    tracker.spawn(async move { file_writer_task(&target_file, size, rx, prog_tx).await });
+
+    let mut jobs_done: Vec<tokio::sync::oneshot::Receiver<()>> = Vec::new();
+    for chunk in ranges {
+        let (job_done_tx, job_done_rx) = tokio::sync::oneshot::channel::<()>();
+        jobs_done.push(job_done_rx);
+        job_tx
+            .send(DownloadJob {
+                url: url.clone(),
+                chunk: chunk.clone(),
+                downloaded_bytes_tx: tx.clone(),
+                job_done_tx,
+            })
+            .await
+            .with_context(|| {
+                log::info!("Failed to send job");
+                "Failed to send job"
+            })?;
+    }
+
+    let results = futures::future::join_all(jobs_done).await;
+    for result in results {
+        result.with_context(|| "Job failed")?;
+    }
+
+    tx.send(Command::FinishWriting)
+        .with_context(|| "Failed to send finished command to file writer")?;
+
+    tracker.close();
+    cancellation_token.cancel();
+
+    tracker.wait().await;
 
     Ok(())
 }

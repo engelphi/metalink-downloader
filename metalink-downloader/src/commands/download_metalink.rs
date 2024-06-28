@@ -1,4 +1,4 @@
-use crate::http::{make_http_client, segregrated_download, simple_download};
+use crate::http::{download, make_http_client, simple_download};
 use crate::types::{FilePlan, Plan};
 use crate::Result;
 use anyhow::Context;
@@ -24,29 +24,30 @@ pub async fn download_metalink(
     let progress_reporter: JoinHandle<Result<()>> =
         tokio::spawn(async move { progress_reporter_task(prog_rx, total_size).await });
 
-    let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
+    //let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
     for file in plan.files {
         let cloned_file = file.clone();
         let cloned_tx = prog_tx.clone();
         let cloned_client = client.clone();
-        tasks.push(tokio::spawn(async move {
-            download_file_task(
-                &cloned_client,
-                &cloned_file,
-                &cloned_tx,
-                max_threads_per_file,
-            )
-            .await
-        }));
+        //tasks.push(tokio::spawn(async move {
+        download_file_task(
+            &cloned_client,
+            &cloned_file,
+            &cloned_tx,
+            max_threads_per_file,
+        )
+        .await
+        .with_context(|| format!("Failed to download file: {:?}", file.target_file))?;
+        //}));
     }
-    let _ = futures::future::join_all(tasks).await;
+    //let _ = futures::future::join_all(tasks).await;
 
     prog_tx
         .send(ProgressUpdate::Finished)
-        .context("Failed to send finish progress command")?;
-    let _ = progress_reporter
+        .with_context(|| "Failed to send finish progress command")?;
+    progress_reporter
         .await
-        .context("Progress Reporter failed")?;
+        .with_context(|| "Progress Reporter failed")??;
 
     Ok(())
 }
@@ -59,7 +60,7 @@ async fn download_file_task(
 ) -> Result<()> {
     log::info!("Start downloading: {:?}", file.target_file);
     if let Some(chunks) = file.chunks.as_ref() {
-        segregrated_download(
+        download(
             client,
             file.url.clone(),
             file.target_file.clone(),
@@ -68,9 +69,12 @@ async fn download_file_task(
             Some(tx.clone()),
             max_threads_per_file,
         )
-        .await?;
+        .await
+        .with_context(|| format!("Parallel download of {:?} failed", file.target_file))?;
     } else {
-        simple_download(client, file.url.clone(), file.target_file.clone()).await?;
+        simple_download(client, file.url.clone(), file.target_file.clone())
+            .await
+            .with_context(|| format!("Simple download of {:?} failed", file.target_file))?;
     }
     log::info!("Finish downloading: {:?}", file.target_file);
     Ok(())
