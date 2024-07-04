@@ -1,5 +1,7 @@
 use crate::types::{ChunkMetaData, Command, ProgressUpdate};
 use crate::{MetalinkDownloadError, Result};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{policies::ExponentialBackoff, Jitter, RetryTransientMiddleware};
 
 use anyhow::{anyhow, Context};
 use log::info;
@@ -9,20 +11,31 @@ use std::time::Duration;
 
 use tokio::task::JoinHandle;
 
+pub(crate) type Client = ClientWithMiddleware;
+
 /// Creates a reqwest client to be used by the downloader tasks
-pub(crate) fn make_http_client(user_agent: String) -> Result<reqwest::Client> {
-    Ok(reqwest::ClientBuilder::new()
-        .https_only(true)
-        .http2_prior_knowledge()
-        .gzip(true)
-        .zstd(true)
-        .timeout(Duration::from_secs(20))
-        .user_agent(user_agent)
-        .build()?)
+pub(crate) fn make_http_client(user_agent: String) -> Result<Client> {
+    let retry_policy = ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_secs(1), Duration::from_secs(60))
+        .jitter(Jitter::Bounded)
+        .base(2)
+        .build_with_max_retries(5);
+    Ok(ClientBuilder::new(
+        reqwest::ClientBuilder::new()
+            .https_only(true)
+            .http2_prior_knowledge()
+            .gzip(true)
+            .zstd(true)
+            .timeout(Duration::from_secs(20))
+            .user_agent(user_agent)
+            .build()?,
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .build())
 }
 
 async fn request_range(
-    client: &reqwest::Client,
+    client: &Client,
     url: &reqwest::Url,
     start: u64,
     end: u64,
@@ -39,7 +52,7 @@ async fn request_range(
 }
 
 pub(crate) async fn simple_download(
-    client: &reqwest::Client,
+    client: &Client,
     url: reqwest::Url,
     target_file: PathBuf,
 ) -> Result<()> {
@@ -59,10 +72,7 @@ pub(crate) async fn simple_download(
     Ok(())
 }
 
-pub(crate) async fn get_file_size(
-    client: &reqwest::Client,
-    url: reqwest::Url,
-) -> Result<Option<u64>> {
+pub(crate) async fn get_file_size(client: &Client, url: reqwest::Url) -> Result<Option<u64>> {
     let mut response = client.head(url).send().await?;
 
     match response
@@ -83,7 +93,7 @@ pub(crate) async fn get_file_size(
 
 async fn download_chunk(
     chunk: &ChunkMetaData,
-    client: &reqwest::Client,
+    client: &Client,
     url: &reqwest::Url,
     tx: &tokio::sync::mpsc::UnboundedSender<Command>,
 ) -> Result<()> {
@@ -182,7 +192,7 @@ async fn file_writer_task(
 }
 
 pub(crate) async fn segregrated_download(
-    client: &reqwest::Client,
+    client: &Client,
     url: reqwest::Url,
     target_file: PathBuf,
     size: u64,
@@ -239,7 +249,7 @@ struct DownloadJob {
 }
 
 async fn download_worker(
-    client: &reqwest::Client,
+    client: &Client,
     job_queue: &async_channel::Receiver<DownloadJob>,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<()> {
@@ -268,7 +278,7 @@ async fn download_worker(
 }
 
 pub(crate) async fn download(
-    client: &reqwest::Client,
+    client: &Client,
     url: reqwest::Url,
     target_file: PathBuf,
     size: u64,

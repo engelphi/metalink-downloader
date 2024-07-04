@@ -10,6 +10,9 @@ pub enum MetalinkDownloadError {
     RequestError(#[from] reqwest::Error),
 
     #[error(transparent)]
+    RequestMiddlewareError(#[from] reqwest_middleware::Error),
+
+    #[error(transparent)]
     HeaderError(#[from] reqwest::header::InvalidHeaderValue),
 
     #[error(transparent)]

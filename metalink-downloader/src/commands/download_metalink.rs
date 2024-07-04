@@ -1,4 +1,4 @@
-use crate::http::{download, make_http_client, simple_download};
+use crate::http::{download, make_http_client, simple_download, Client};
 use crate::types::{FilePlan, Plan};
 use crate::Result;
 use anyhow::Context;
@@ -53,7 +53,7 @@ pub async fn download_metalink(
 }
 
 async fn download_file_task(
-    client: &reqwest::Client,
+    client: &Client,
     file: &FilePlan,
     tx: &tokio::sync::mpsc::UnboundedSender<ProgressUpdate>,
     max_threads_per_file: u16,
