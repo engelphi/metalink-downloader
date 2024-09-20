@@ -54,8 +54,7 @@ pub enum Commands {
         #[arg(long, default_value=concat!("metalink-downloader/", env!("CARGO_PKG_VERSION")))]
         user_agent: String,
 
-        /// Max number of download threads to use per file
-        #[arg(long, default_value_t=2, value_parser = clap::value_parser!(u16).range(2..))]
-        max_threads_per_file: u16,
+        #[arg(short, long)]
+        verify_chunk_checksums: bool,
     },
 }

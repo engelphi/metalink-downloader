@@ -30,12 +30,12 @@ impl App {
                 metalink_file,
                 target_dir,
                 user_agent,
-                max_threads_per_file,
+                verify_chunk_checksums,
             } => Ok(commands::download_metalink(
                 metalink_file,
                 target_dir,
                 user_agent,
-                max_threads_per_file,
+                verify_chunk_checksums,
             )
             .await?),
         }

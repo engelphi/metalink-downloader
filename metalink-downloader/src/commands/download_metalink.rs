@@ -13,7 +13,7 @@ pub async fn download_metalink(
     metalink_file: PathBuf,
     target_dir: PathBuf,
     user_agent: String,
-    max_threads_per_file: u16,
+    verify_chunk_checksums: bool,
 ) -> Result<()> {
     log::info!("==========Start Metalink Download==========");
     let plan = Plan::new(metalink_file, &target_dir)?.minimize_plan()?;
@@ -24,23 +24,23 @@ pub async fn download_metalink(
     let progress_reporter: JoinHandle<Result<()>> =
         tokio::spawn(async move { progress_reporter_task(prog_rx, total_size).await });
 
-    //let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
+    let tracker = tokio_util::task::TaskTracker::new();
     for file in plan.files {
         let cloned_file = file.clone();
         let cloned_tx = prog_tx.clone();
         let cloned_client = client.clone();
-        //tasks.push(tokio::spawn(async move {
-        download_file_task(
-            &cloned_client,
-            &cloned_file,
-            &cloned_tx,
-            max_threads_per_file,
-        )
-        .await
-        .with_context(|| format!("Failed to download file: {:?}", file.target_file))?;
-        //}));
+        tracker.spawn(async move {
+            let _ = download_file_task(
+                &cloned_client,
+                &cloned_file,
+                &cloned_tx,
+                verify_chunk_checksums,
+            )
+            .await;
+        });
     }
-    //let _ = futures::future::join_all(tasks).await;
+    tracker.close();
+    tracker.wait().await;
 
     prog_tx
         .send(ProgressUpdate::Finished)
@@ -56,7 +56,7 @@ async fn download_file_task(
     client: &Client,
     file: &FilePlan,
     tx: &tokio::sync::mpsc::UnboundedSender<ProgressUpdate>,
-    max_threads_per_file: u16,
+    verify_chunk_checksums: bool,
 ) -> Result<()> {
     log::info!("Start downloading: {:?}", file.target_file);
     if let Some(chunks) = file.chunks.as_ref() {
@@ -64,10 +64,9 @@ async fn download_file_task(
             client,
             file.url.clone(),
             file.target_file.clone(),
-            file.file_size.unwrap(),
             chunks,
             Some(tx.clone()),
-            max_threads_per_file,
+            verify_chunk_checksums,
         )
         .await
         .with_context(|| format!("Parallel download of {:?} failed", file.target_file))?;

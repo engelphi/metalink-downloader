@@ -1,5 +1,5 @@
 use crate::types::{ChunkMetaData, Command, ProgressUpdate};
-use crate::{MetalinkDownloadError, Result};
+use crate::Result;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, Jitter, RetryTransientMiddleware};
 
@@ -9,6 +9,8 @@ use std::io::{Seek, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 use tokio::task::JoinHandle;
 
 pub(crate) type Client = ClientWithMiddleware;
@@ -236,104 +238,45 @@ pub(crate) async fn segregrated_download(
     Ok(())
 }
 
-#[derive(Debug)]
-struct DownloadJob {
-    /// Url to download from
-    url: reqwest::Url,
-    /// The chunk to download
-    chunk: ChunkMetaData,
-    /// Sender for forwarding the download bytes to the file writer
-    downloaded_bytes_tx: tokio::sync::mpsc::UnboundedSender<Command>,
-    /// channel for reporting that a task is finished
-    job_done_tx: tokio::sync::oneshot::Sender<()>,
-}
-
-async fn download_worker(
-    client: &Client,
-    job_queue: &async_channel::Receiver<DownloadJob>,
-    cancellation_token: tokio_util::sync::CancellationToken,
-) -> Result<()> {
-    loop {
-        tokio::select! {
-            job = job_queue.recv() => {
-                match job {
-                    Ok(job) => {
-                        info!("Start downloading chunk starting at: {}", job.chunk.start);
-                        download_chunk(&job.chunk, client, &job.url, &job.downloaded_bytes_tx).await.with_context(|| "Chunk download failed")?;
-                        info!("Finish downloading chunk starting at: {}", job.chunk.start);
-                        job.job_done_tx.send(()).map_err(|_| MetalinkDownloadError::Other(anyhow!("Failed to send job finished message"))).with_context(|| "Failed to send job finished message")?;
-                    }
-                    Err(e) => {
-                        info!("Failed to recv job: {e}");
-                        return Err(MetalinkDownloadError::Other(anyhow!("Failed to recv job: {e}")));
-                    }
-                }
-            },
-            _ = cancellation_token.cancelled() => {
-                info!("Shutting down download worker");
-                return Ok(());
-            }
-        }
-    }
-}
-
 pub(crate) async fn download(
     client: &Client,
     url: reqwest::Url,
     target_file: PathBuf,
-    size: u64,
     ranges: &[ChunkMetaData],
     prog_tx: Option<tokio::sync::mpsc::UnboundedSender<ProgressUpdate>>,
-    max_threads: u16,
+    verify_chunk_checksum: bool,
 ) -> Result<()> {
-    let available_parallelism: usize = std::cmp::min((max_threads - 1) as usize, ranges.len());
+    std::fs::create_dir_all(target_file.parent().unwrap())?;
+    let mut f = File::create(target_file.clone())
+        .await
+        .with_context(|| format!("Failed to create file {:?}", target_file))?;
 
-    let (job_tx, job_rx) = async_channel::bounded::<DownloadJob>(available_parallelism);
-    let cancellation_token = tokio_util::sync::CancellationToken::new();
-
-    let tracker = tokio_util::task::TaskTracker::new();
-    for _ in 0..available_parallelism {
-        let cloned_job_rx = job_rx.clone();
-        let cloned_client = client.clone();
-        let cloned_token = cancellation_token.clone();
-        tracker.spawn(async move {
-            download_worker(&cloned_client, &cloned_job_rx, cloned_token).await
-        });
-    }
-
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
-    tracker.spawn(async move { file_writer_task(&target_file, size, rx, prog_tx).await });
-
-    let mut jobs_done: Vec<tokio::sync::oneshot::Receiver<()>> = Vec::new();
     for chunk in ranges {
-        let (job_done_tx, job_done_rx) = tokio::sync::oneshot::channel::<()>();
-        jobs_done.push(job_done_rx);
-        job_tx
-            .send(DownloadJob {
-                url: url.clone(),
-                chunk: chunk.clone(),
-                downloaded_bytes_tx: tx.clone(),
-                job_done_tx,
-            })
-            .await
-            .with_context(|| {
-                log::info!("Failed to send job");
-                "Failed to send job"
-            })?;
+        if chunk.has_checksum() && verify_chunk_checksum {
+            // retry at most three times
+            for _ in 0..3 {
+                let response = request_range(client, &url, chunk.start, chunk.end).await?;
+                let bytes = response.bytes().await?;
+                if let Some(true) = chunk.validate_checksum(&bytes) {
+                    log::debug!(
+                        "Checksum validation of {:?} for chunk starting at {} succeeded",
+                        chunk.filename,
+                        chunk.start
+                    );
+                    f.write_all(&bytes).await?;
+                }
+            }
+        } else {
+            let response = request_range(client, &url, chunk.start, chunk.end).await?;
+            let bytes = response.bytes().await?;
+            f.write_all(&bytes).await?;
+        }
+
+        if let Some(tx) = &prog_tx {
+            tx.send(ProgressUpdate::Progressed(chunk.chunk_size()))
+                .with_context(|| "Failed to send progress update")?;
+        }
     }
-
-    let results = futures::future::join_all(jobs_done).await;
-    for result in results {
-        result.with_context(|| "Job failed")?;
-    }
-
-    tx.send(Command::FinishWriting)
-        .with_context(|| "Failed to send finished command to file writer")?;
-
-    tracker.close();
-    cancellation_token.cancel();
-
-    tracker.wait().await;
 
     Ok(())
 }
