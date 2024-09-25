@@ -264,6 +264,7 @@ pub(crate) async fn download(
                         chunk.start
                     );
                     f.write_all(&bytes).await?;
+                    break;
                 }
             }
         } else {
