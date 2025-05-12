@@ -185,13 +185,71 @@ enum DownloadStateChangeCommand {
     Cancel,
 }
 
+pub trait EventHandler {
+    fn on_download_initialized(&self, total_download_size: u64);
+
+    fn on_download_started(&self);
+
+    fn on_download_progressed(&self, bytes_done: u64, total_bytes: u64);
+
+    fn on_download_paused(&self);
+
+    fn on_download_resumed(&self);
+
+    fn on_download_failed(&self, error: MetalinkDownloadError);
+
+    fn on_download_succeeded(&self);
+
+    fn on_download_cancelled(&self);
+}
+
+#[derive(Debug, Default)]
+struct DefaultHandler;
+
+impl EventHandler for DefaultHandler {
+    fn on_download_initialized(&self, total_download_size: u64) {
+        log::info!(
+            "Download with size {} bytes initialized",
+            total_download_size
+        );
+    }
+
+    fn on_download_progressed(&self, bytes_done: u64, total_bytes: u64) {
+        log::info!("{} of {} bytes downloaded", bytes_done, total_bytes);
+    }
+
+    fn on_download_failed(&self, error: MetalinkDownloadError) {
+        log::error!("Download failed: {}", error);
+    }
+
+    fn on_download_started(&self) {
+        log::info!("Download started");
+    }
+
+    fn on_download_succeeded(&self) {
+        log::info!("Download succeeded");
+    }
+
+    fn on_download_cancelled(&self) {
+        log::info!("Download cancelled");
+    }
+
+    fn on_download_paused(&self) {
+        log::info!("Download paused");
+    }
+
+    fn on_download_resumed(&self) {
+        log::info!("Download resumed");
+    }
+}
+
 pub struct Download {
     metalink_file: PathBuf,
     verify_chunk_checksums: bool,
     target_dir: PathBuf,
     user_agent: Option<String>,
     max_concurrent_threads: u64,
-    progress_callback: Arc<Box<dyn Fn(u64, u64) + Send + Sync>>,
+    event_handler: Arc<Box<dyn EventHandler + Send + Sync>>,
     state_change_cmd_rx: tokio::sync::watch::Receiver<DownloadStateChangeCommand>,
     state_change_cmd_tx: tokio::sync::watch::Sender<DownloadStateChangeCommand>,
     download_task: Option<tokio::task::JoinHandle<Result<()>>>,
@@ -208,10 +266,10 @@ impl Download {
         let target_dir = self.target_dir.clone();
         let user_agent = self.user_agent.clone();
         let max_concurrent_tasks = self.max_concurrent_threads;
-        let progress_callback = self.progress_callback.clone();
         let state_change_cmd_rx = self.state_change_cmd_rx.clone();
         let verify_chunk_checksums = self.verify_chunk_checksums;
         let max_retries = self.max_retries;
+        let event_handler = self.event_handler.clone();
         self.download_task = Some(tokio::spawn(async move {
             download_task(
                 metalink_file,
@@ -220,8 +278,8 @@ impl Download {
                 user_agent,
                 max_concurrent_tasks,
                 max_retries,
-                progress_callback,
                 state_change_cmd_rx,
+                event_handler,
             )
             .await
         }));
@@ -271,7 +329,7 @@ pub struct DownloadBuilder {
     verify_chunk_checksums: bool,
     max_concurrent_threads: Option<u64>,
     max_retries: Option<u64>,
-    progress_callback: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+    event_handler: Option<Box<dyn EventHandler + Send + Sync>>,
 }
 
 impl DownloadBuilder {
@@ -305,19 +363,11 @@ impl DownloadBuilder {
         self
     }
 
-    pub fn with_progress_callback(
+    pub fn with_event_handler(
         mut self,
-        callback: impl Fn(u64, u64) + 'static + Send + Sync,
+        handler: impl EventHandler + 'static + Send + Sync,
     ) -> Self {
-        self.progress_callback = Some(Box::new(callback));
-        self
-    }
-
-    pub fn with_boxed_progress_callback(
-        mut self,
-        callback: Box<dyn Fn(u64, u64) + Send + Sync>,
-    ) -> Self {
-        self.progress_callback = Some(callback);
+        self.event_handler = Some(Box::new(handler));
         self
     }
 
@@ -337,15 +387,14 @@ impl DownloadBuilder {
                 target_dir: self.target_dir.unwrap(),
                 user_agent: self.user_agent,
                 max_concurrent_threads: self.max_concurrent_threads.unwrap_or(1),
-                progress_callback: Arc::new(self.progress_callback.unwrap_or(Box::new(
-                    |done, total| {
-                        log::info!("Downloaded {} of {} bytes", done, total);
-                    },
-                ))),
                 state_change_cmd_tx: tx,
                 state_change_cmd_rx: rx,
                 download_task: None,
                 max_retries: self.max_retries.unwrap_or(0),
+                event_handler: Arc::new(
+                    self.event_handler
+                        .unwrap_or(Box::new(DefaultHandler::default())),
+                ),
             }),
             None => Err(MetalinkDownloadError::Other(anyhow!(
                 "with_metalink_file needs to be called"
@@ -493,8 +542,8 @@ async fn download_task(
     user_agent: Option<String>,
     max_concurrent_tasks: u64,
     max_retries: u64,
-    progress_callback: Arc<Box<dyn Fn(u64, u64) + Send + Sync>>,
     mut state_change_cmd_rx: tokio::sync::watch::Receiver<DownloadStateChangeCommand>,
+    event_handler: Arc<Box<dyn EventHandler + Send + Sync>>,
 ) -> Result<()> {
     log::info!("Download Task start");
     let mut state = DownloadState::Created;
@@ -532,6 +581,8 @@ async fn download_task(
             worker.spawn().await;
         });
     }
+
+    event_handler.on_download_initialized(plan.total_size);
 
     // submit work
     for file in plan.files {
@@ -613,21 +664,27 @@ async fn download_task(
                             .send(DownloadStateChangeCommand::Run)
                             .with_context(|| "state change channel was closed")?;
                         state = DownloadState::Running;
+                        event_handler.on_download_started();
                     }
                     DownloadStateChangeCommand::Cancel => {
                         state_change_tx
                             .send(DownloadStateChangeCommand::Cancel)
                             .with_context(|| "state change channel was closed")?;
                         state = DownloadState::Finished;
+                        event_handler.on_download_cancelled();
                     }
                     _ => (),
                 },
                 // state change sender dropped cancel workers and get out
-                Err(_) => {
+                Err(e) => {
                     state_change_tx
                         .send(DownloadStateChangeCommand::Cancel)
                         .with_context(|| "state change channel was closed")?;
                     state = DownloadState::Finished;
+                    event_handler.on_download_failed(MetalinkDownloadError::Other(anyhow!(
+                        "Download Failed: {}",
+                        e
+                    )));
                 }
             },
             DownloadState::Running => {
@@ -639,19 +696,25 @@ async fn download_task(
                                     DownloadStateChangeCommand::Pause => {
                                         state_change_tx.send(DownloadStateChangeCommand::Pause).with_context(|| "state change channel was closed")?;
                                         state = DownloadState::Paused;
+                                        event_handler.on_download_paused();
                                     }
                                     DownloadStateChangeCommand::Cancel => {
                                         state_change_tx.send(DownloadStateChangeCommand::Cancel).with_context(|| "state change channel was closed")?;
                                         state = DownloadState::Finished;
+                                        event_handler.on_download_cancelled();
                                     }
                                     _ => ()
                                 }
                             }
-                            Err(_) => {
+                            Err(e) => {
                                 state_change_tx
                                     .send(DownloadStateChangeCommand::Cancel)
                                     .with_context(|| "state change channel was closed")?;
                                 state = DownloadState::Finished;
+                                event_handler.on_download_failed(MetalinkDownloadError::Other(anyhow!(
+                                    "Download Failed: {}",
+                                    e
+                                )));
                             }
                         }
                     },
@@ -660,11 +723,12 @@ async fn download_task(
                             Some(result) => {
                                 write_chunk(&result).await?;
                                 bytes_downloaded += result.data.len() as u64;
-                                progress_callback(bytes_downloaded, plan.total_size);
+                                event_handler.on_download_progressed(bytes_downloaded, plan.total_size);
                                 chunks_todo -= 1;
                                 if chunks_todo == 0 {
                                     // Everything seems to be done. Finish
                                     state = DownloadState::Finished;
+                                    event_handler.on_download_succeeded();
                                 }
                             }
                             None => state = DownloadState::Finished,
@@ -679,6 +743,9 @@ async fn download_task(
                                         .send(DownloadStateChangeCommand::Cancel)
                                         .with_context(|| "state change channel was closed")?;
                                     state = DownloadState::Finished;
+                                    event_handler.on_download_failed(MetalinkDownloadError::Other(anyhow!(
+                                        "Download Failed: Maximum number of retries exceeded",
+                                    )));
                                 } else {
                                     retries += 1;
                                     chunk_tx
@@ -699,21 +766,27 @@ async fn download_task(
                             .send(DownloadStateChangeCommand::Resume)
                             .with_context(|| "state change channel was closed")?;
                         state = DownloadState::Running;
+                        event_handler.on_download_resumed();
                     }
                     DownloadStateChangeCommand::Cancel => {
                         state_change_tx
                             .send(DownloadStateChangeCommand::Cancel)
                             .with_context(|| "state change channel was closed")?;
                         state = DownloadState::Finished;
+                        event_handler.on_download_cancelled();
                     }
                     _ => (),
                 },
                 // state change sender dropped cancel workers and get out
-                Err(_) => {
+                Err(e) => {
                     state_change_tx
                         .send(DownloadStateChangeCommand::Cancel)
                         .with_context(|| "state change channel was closed")?;
                     state = DownloadState::Finished;
+                    event_handler.on_download_failed(MetalinkDownloadError::Other(anyhow!(
+                        "Download Failed: {}",
+                        e
+                    )));
                 }
             },
             DownloadState::Finished => {
