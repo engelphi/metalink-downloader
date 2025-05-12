@@ -36,19 +36,21 @@ pub(crate) fn make_http_client(user_agent: String) -> Result<Client> {
     .build())
 }
 
-async fn request_range(
+pub(crate) async fn request_range(
     client: &Client,
     url: &reqwest::Url,
     start: u64,
     end: u64,
 ) -> Result<reqwest::Response> {
+    use reqwest::header::{HeaderValue, ACCEPT, CONNECTION, RANGE};
     Ok(client
         .get(url.clone())
         .header(
-            reqwest::header::RANGE,
-            reqwest::header::HeaderValue::from_str(&format!("bytes={start}-{end}"))
-                .expect("Failed to construct range header"),
+            RANGE,
+            HeaderValue::from_str(&format!("bytes={start}-{end}"))?,
         )
+        .header(ACCEPT, HeaderValue::from_str("*/*")?)
+        .header(CONNECTION, HeaderValue::from_str("keep-alive")?)
         .send()
         .await?)
 }

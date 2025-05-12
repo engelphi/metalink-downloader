@@ -1,1 +1,0 @@
-cat .git/COMMIT_EDITMSG | commitlint

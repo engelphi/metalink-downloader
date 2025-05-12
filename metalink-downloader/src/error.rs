@@ -1,7 +1,6 @@
-use miette::Diagnostic;
 use thiserror::Error;
 
-#[derive(Diagnostic, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum MetalinkDownloadError {
     #[error(transparent)]
     MetalinkParsingError(#[from] metalink::MetalinkError),

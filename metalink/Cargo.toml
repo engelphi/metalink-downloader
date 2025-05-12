@@ -13,16 +13,16 @@ categories = ["parsing", "parser-implementations", "web-programming"]
 
 [dependencies]
 iana-registry-enums = { path = "../iana-registry-enums" }
-quick-xml = { version = "0.31", features = ["serialize"] }
-serde = { version = "1", features = ["derive"] }
-url = { version = "2.5", features = ["serde"] }
-validator = { version = "0.16", features = ["derive"] }
-chrono = { version = "0.4", features = ["serde"] }
-mime = "0.3"
-serde_with = "3"
-thiserror = "1"
-anyhow = "1"
-isocountry = "0.3"
+quick-xml = { version = "0.37.5", features = ["serialize"] }
+serde = { version = "1.0.219", features = ["derive"] }
+url = { version = "2.5.4", features = ["serde"] }
+validator = { version = "0.20.0", features = ["derive"] }
+chrono = { version = "0.4.41", features = ["serde"] }
+mime = "0.3.17"
+serde_with = "3.12.0"
+thiserror = "2.0.12"
+anyhow = "1.0.98"
+isocountry = "0.3.2"
 
 [dev-dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4.5.37", features = ["derive"] }

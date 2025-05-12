@@ -54,7 +54,12 @@ pub enum Commands {
         #[arg(long, default_value=concat!("metalink-downloader/", env!("CARGO_PKG_VERSION")))]
         user_agent: String,
 
-        #[arg(short, long)]
+        /// do verify chunk checksums if available
+        #[arg(short, long, default_value_t = false)]
         verify_chunk_checksums: bool,
+
+        /// Number of concurrent tasks to be used for downloading
+        #[arg(long, default_value_t = 4)]
+        max_concurrent_tasks: u64,
     },
 }

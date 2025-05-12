@@ -6,8 +6,7 @@ description = "Small download utility for downloading based on Metalink (RFC5854
 license = "MIT"
 repository = "https://github.com/engelphi/metalink-downloader"
 readme = "README.md"
-keywords = ["metalink", "download", "cli"]
-categories = ["command-line-utilities"]
+keywords = ["metalink", "download"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,41 +14,33 @@ categories = ["command-line-utilities"]
 metalink = { path = "../metalink" }
 iana-registry-enums = { path = "../iana-registry-enums" }
 
-# CLI
-clap = { version = "4", features = ["derive"] }
-
 # http 
-reqwest = { version = "0.12", features = ["http2", "gzip", "stream", "native-tls-alpn", "zstd"] }
-reqwest-middleware = "0.3"
-reqwest-retry = "0.6"
-tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["rt"] }
-url = { version = "2.5", features = ["serde"] }
-futures = "0.3"
+reqwest = { version = "0.12.15", features = ["http2", "gzip", "stream", "native-tls-alpn", "zstd", "blocking"] }
+reqwest-middleware = "0.4.2"
+reqwest-retry = "0.7.0"
+tokio = { version = "1.44.2", features = ["full"] }
+tokio-util = { version = "0.7.15", features = ["rt"] }
 async-channel = "2.3.1"
+url = { version = "2.5.4", features = ["serde"] }
+futures = "0.3.31"
 
 # error handling
-anyhow = "1"
-thiserror = "1"
-miette = { version = "7", features = ["fancy"] }
+anyhow = "1.0.98"
+thiserror = "2.0.12"
 
 # utilities
-bytes = "1"
+bytes = "1.10.1"
 
 # checksum
-digest = "0.10"
-md2 = "0.10"
-md-5 = "0.10"
-sha1-checked = "0.10"
-sha2 = "0.10"
+digest = "0.10.7"
+md2 = "0.10.2"
+md-5 = "0.10.6"
+sha1-checked = "0.10.0"
+sha2 = "0.10.9"
 
 #tracing/logging
-log = "0.4"
-log4rs = "1"
+log = "0.4.27"
 
-indicatif = "0.17"
-
-[dev-dependencies.cargo-husky]
-version = "1"
-default-features = false
-features = ["user-hooks"]
+[dev-dependencies]
+clap = { version = "4.5.37", features = ["derive"] }
+indicatif = "0.17.11"

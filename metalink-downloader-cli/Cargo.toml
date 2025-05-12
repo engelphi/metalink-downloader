@@ -1,0 +1,15 @@
+[package]
+name = "metalink-downloader-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metalink-downloader = { path = "../metalink-downloader" }
+
+tokio = { version = "1.44.2", features = ["full"] }
+anyhow = "1.0.98" 
+clap = { version = "4.5.37", features = ["derive"] }
+log = "0.4.27"
+log4rs = "1.3.0"
+url = { version = "2.5.4", features = ["serde"] }
+indicatif = "0.17.11"
