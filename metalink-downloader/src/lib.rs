@@ -5,119 +5,19 @@ mod types;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::http::{
-    download, get_file_size, make_http_client, segregrated_download, simple_download, Client,
-};
+use crate::http::{get_file_size, make_http_client};
 pub use error::{MetalinkDownloadError, Result};
 use http::request_range;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
-use types::CheckSum;
 use types::ChunkMetaData;
-use types::ProgressUpdate;
-use types::{FilePlan, Plan};
+use types::Plan;
 
 use anyhow::{anyhow, Context};
 use futures::StreamExt;
 use log::info;
 use tokio::task::JoinHandle;
-
-pub async fn download_metalink(
-    metalink_file: PathBuf,
-    target_dir: PathBuf,
-    user_agent: String,
-    verify_chunk_checksums: bool,
-) -> Result<()> {
-    log::info!("==========Start Metalink Download==========");
-    let plan = Plan::new(metalink_file, &target_dir)?.minimize_plan()?;
-
-    let client = make_http_client(user_agent)?;
-    let total_size = plan.total_size;
-    let (prog_tx, prog_rx) = tokio::sync::mpsc::unbounded_channel::<ProgressUpdate>();
-    let progress_reporter: JoinHandle<Result<()>> =
-        tokio::spawn(async move { progress_reporter_task(prog_rx, total_size).await });
-
-    let tracker = tokio_util::task::TaskTracker::new();
-    for file in plan.files {
-        let cloned_file = file.clone();
-        let cloned_tx = prog_tx.clone();
-        let cloned_client = client.clone();
-        tracker.spawn(async move {
-            let _ = download_file_task(
-                &cloned_client,
-                &cloned_file,
-                &cloned_tx,
-                verify_chunk_checksums,
-            )
-            .await;
-        });
-    }
-    tracker.close();
-    tracker.wait().await;
-
-    prog_tx
-        .send(ProgressUpdate::Finished)
-        .with_context(|| "Failed to send finish progress command")?;
-    progress_reporter
-        .await
-        .with_context(|| "Progress Reporter failed")??;
-
-    Ok(())
-}
-
-async fn download_file_task(
-    client: &Client,
-    file: &FilePlan,
-    tx: &tokio::sync::mpsc::UnboundedSender<ProgressUpdate>,
-    verify_chunk_checksums: bool,
-) -> Result<()> {
-    log::info!("Start downloading: {:?}", file.target_file);
-    if let Some(chunks) = file.chunks.as_ref() {
-        download(
-            client,
-            file.url.clone(),
-            file.target_file.clone(),
-            chunks,
-            Some(tx.clone()),
-            verify_chunk_checksums,
-        )
-        .await
-        .with_context(|| format!("Parallel download of {:?} failed", file.target_file))?;
-    } else {
-        simple_download(client, file.url.clone(), file.target_file.clone())
-            .await
-            .with_context(|| format!("Simple download of {:?} failed", file.target_file))?;
-    }
-    log::info!("Finish downloading: {:?}", file.target_file);
-    Ok(())
-}
-
-async fn progress_reporter_task(
-    mut _prog_rx: tokio::sync::mpsc::UnboundedReceiver<ProgressUpdate>,
-    _total_size: u64,
-) -> Result<()> {
-    // let pb = ProgressBar::new(total_size);
-    // pb.set_style(
-    //         ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-    //             .unwrap()
-    //             .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
-    //             .progress_chars("#>-"));
-    // let mut bytes_downloaded = 0;
-    // while let Some(cmd) = prog_rx.recv().await {
-    //     match cmd {
-    //         ProgressUpdate::Progressed(bytes) => {
-    //             bytes_downloaded += bytes;
-    //             pb.set_position(bytes_downloaded);
-    //         }
-    //         ProgressUpdate::Finished => break,
-    //     }
-    // }
-    //
-    // pb.finish_with_message("Download Finished");
-    // Ok(())
-    Ok(())
-}
 
 pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
     info!("File: {metalink_file:?}, Target: {target_dir:?}");
@@ -129,44 +29,7 @@ pub async fn plan(metalink_file: PathBuf, target_dir: PathBuf) -> Result<()> {
     Ok(())
 }
 
-const ONE_MB: u64 = 1_048_576;
 const DEFAULT_CHUNK_SIZE: u64 = 512000;
-
-pub async fn download_file(
-    url: url::Url,
-    target_dir: PathBuf,
-    user_agent: String,
-    max_threads: u16,
-) -> Result<()> {
-    let client = make_http_client(user_agent)?;
-    let url = reqwest::Url::parse(url.as_str())?;
-    let path = PathBuf::from(url.path());
-    let file_name = path
-        .file_name()
-        .ok_or(anyhow!("Unable to extract file path from url"))?;
-    let target_file = target_dir.join(file_name);
-
-    match get_file_size(&client, url.clone()).await? {
-        Some(size) => {
-            if size <= ONE_MB {
-                simple_download(&client, url.clone(), target_file).await
-            } else {
-                let ranges = ChunkMetaData::calculate_ranges(size, ONE_MB, &target_file);
-                segregrated_download(
-                    &client,
-                    url.clone(),
-                    target_file,
-                    size,
-                    &ranges,
-                    None,
-                    max_threads,
-                )
-                .await
-            }
-        }
-        None => simple_download(&client, url.clone(), target_file).await,
-    }
-}
 
 #[derive(Debug)]
 enum DownloadState {
@@ -252,7 +115,7 @@ pub struct Download {
     event_handler: Arc<Box<dyn EventHandler + Send + Sync>>,
     state_change_cmd_rx: tokio::sync::watch::Receiver<DownloadStateChangeCommand>,
     state_change_cmd_tx: tokio::sync::watch::Sender<DownloadStateChangeCommand>,
-    download_task: Option<tokio::task::JoinHandle<Result<()>>>,
+    download_task: Option<JoinHandle<Result<()>>>,
     max_retries: u64,
 }
 
@@ -412,18 +275,8 @@ enum WorkerState {
 }
 
 #[derive(Debug)]
-struct DownloadChunkData {
-    start: u64,
-    end: u64,
-    url: reqwest::Url,
-    target_file: PathBuf,
-    checksum: Option<CheckSum>,
-}
-
-#[derive(Debug)]
 struct DownloadChunkResult {
-    start: u64,
-    end: u64,
+    file_offset: u64,
     target_file: PathBuf,
     data: bytes::Bytes,
 }
@@ -431,9 +284,9 @@ struct DownloadChunkResult {
 #[derive(Debug)]
 struct DownloadWorker {
     state_change_receiver: tokio::sync::watch::Receiver<DownloadStateChangeCommand>,
-    chunk_metadata_receiver: std::pin::Pin<Box<async_channel::Receiver<DownloadChunkData>>>,
+    chunk_metadata_receiver: std::pin::Pin<Box<async_channel::Receiver<ChunkMetaData>>>,
     result_data_sender: tokio::sync::mpsc::UnboundedSender<DownloadChunkResult>,
-    error_data_sender: tokio::sync::mpsc::UnboundedSender<DownloadChunkData>,
+    error_data_sender: tokio::sync::mpsc::UnboundedSender<ChunkMetaData>,
     client: ClientWithMiddleware,
     state: WorkerState,
 }
@@ -441,9 +294,9 @@ struct DownloadWorker {
 impl DownloadWorker {
     pub fn new(
         state_change_receiver: tokio::sync::watch::Receiver<DownloadStateChangeCommand>,
-        chunk_metadata_receiver: async_channel::Receiver<DownloadChunkData>,
+        chunk_metadata_receiver: async_channel::Receiver<ChunkMetaData>,
         result_data_sender: tokio::sync::mpsc::UnboundedSender<DownloadChunkResult>,
-        error_data_sender: tokio::sync::mpsc::UnboundedSender<DownloadChunkData>,
+        error_data_sender: tokio::sync::mpsc::UnboundedSender<ChunkMetaData>,
         client: ClientWithMiddleware,
     ) -> Self {
         Self {
@@ -514,22 +367,19 @@ impl DownloadWorker {
         }
     }
 
-    async fn download_chunk(&self, chunk: &DownloadChunkData) -> Result<DownloadChunkResult> {
+    async fn download_chunk(&self, chunk: &ChunkMetaData) -> Result<DownloadChunkResult> {
         let data = request_range(&self.client, &chunk.url, chunk.start, chunk.end)
             .await?
             .bytes()
             .await?;
-        if let Some(ref checksum) = chunk.checksum {
-            if !checksum.validate_checksum(&data) {
-                return Err(MetalinkDownloadError::Other(anyhow!(
-                    "Checksum Validation Failed"
-                )));
-            }
+        if let Some(false) = chunk.validate_checksum(&data) {
+            return Err(MetalinkDownloadError::Other(anyhow!(
+                "Checksum Validation Failed"
+            )));
         }
         Ok(DownloadChunkResult {
-            start: chunk.start,
-            end: chunk.end,
-            target_file: chunk.target_file.clone(),
+            file_offset: chunk.start,
+            target_file: chunk.filename.clone(),
             data,
         })
     }
@@ -588,28 +438,17 @@ async fn download_task(
     for file in plan.files {
         if let Some(chunks) = file.chunks {
             chunks_todo += chunks.len();
-            for chunk in chunks {
-                let checksum = if !verify_chunk_checksums {
-                    None
-                } else {
-                    chunk.checksum
-                };
+            for mut chunk in chunks {
+                if !verify_chunk_checksums {
+                    chunk.checksum = None;
+                }
 
-                chunk_tx
-                    .send(DownloadChunkData {
-                        start: chunk.start,
-                        end: chunk.end,
-                        url: file.url.clone(),
-                        target_file: file.target_file.clone(),
-                        checksum,
-                    })
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Error while submitting chunk for file {:?}",
-                            file.target_file
-                        )
-                    })?;
+                chunk_tx.send(chunk).await.with_context(|| {
+                    format!(
+                        "Error while submitting chunk for file {:?}",
+                        file.target_file
+                    )
+                })?;
             }
         } else {
             let file_size = if let Some(file_size) = file.file_size {
@@ -628,22 +467,17 @@ async fn download_task(
                 }
             };
 
-            let chunks =
-                ChunkMetaData::calculate_ranges(file_size, DEFAULT_CHUNK_SIZE, &file.target_file);
+            let chunks = ChunkMetaData::calculate_ranges(
+                file_size,
+                DEFAULT_CHUNK_SIZE,
+                &file.target_file,
+                &file.url,
+            );
             chunks_todo += chunks.len();
             for chunk in chunks {
-                chunk_tx
-                    .send(DownloadChunkData {
-                        start: chunk.start,
-                        end: chunk.end,
-                        url: file.url.clone(),
-                        target_file: file.target_file.clone(),
-                        checksum: None,
-                    })
-                    .await
-                    .with_context(|| {
-                        format!("Error while submitting file {:?}", file.target_file)
-                    })?;
+                chunk_tx.send(chunk).await.with_context(|| {
+                    format!("Error while submitting file {:?}", file.target_file)
+                })?;
             }
         }
     }
@@ -820,7 +654,7 @@ async fn write_chunk(chunk_result: &DownloadChunkResult) -> Result<()> {
         .await
         .with_context(|| format!("Failed to open file {:?}", chunk_result.target_file))?;
 
-    file.seek(std::io::SeekFrom::Start(chunk_result.start))
+    file.seek(std::io::SeekFrom::Start(chunk_result.file_offset))
         .await
         .with_context(|| "Unable to seek position")?;
 

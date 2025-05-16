@@ -73,15 +73,6 @@ impl App {
                 metalink_file,
                 target_dir,
             } => Ok(metalink_downloader::plan(metalink_file, target_dir).await?),
-            Commands::DownloadFile {
-                url,
-                target_dir,
-                user_agent,
-                max_threads,
-            } => Ok(
-                metalink_downloader::download_file(url, target_dir, user_agent, max_threads)
-                    .await?,
-            ),
             Commands::DownloadMetalink {
                 metalink_file,
                 target_dir,

@@ -8,22 +8,6 @@ use std::path::{Path, PathBuf};
 
 use crate::{MetalinkDownloadError, Result};
 
-#[derive(Debug)]
-pub(crate) enum Command {
-    WriteFileChunk {
-        offset: u64,
-        downloaded_bytes: bytes::Bytes,
-    },
-    FinishWriting,
-}
-
-#[derive(Debug)]
-pub(crate) enum ProgressUpdate {
-    // Download progressed by n bytes
-    Progressed(u64),
-    Finished,
-}
-
 #[derive(Debug, Default)]
 pub struct Plan {
     pub files: Vec<FilePlan>,
@@ -120,6 +104,19 @@ impl FilePlan {
         let target_file = base_download_dir.join(file.name());
         let file_size: Option<u64> = file.size().map(metalink::Size::size);
 
+        let url: url::Url = match file.urls() {
+            Some(urls) if !urls.is_empty() => urls.first().unwrap().url(),
+            Some(_) => {
+                return Err(MetalinkDownloadError::Other(anyhow!(
+                    "File urls should not be empty"
+                )))
+            }
+            None => {
+                return Err(MetalinkDownloadError::Other(anyhow!(
+                    "Non-url based file defintions are not supported"
+                )))
+            }
+        };
         let chunks: Option<Vec<ChunkMetaData>> = match file.pieces() {
             Some(pieces) => {
                 if file_size.is_none() {
@@ -131,6 +128,7 @@ impl FilePlan {
                     pieces,
                     &target_file,
                     file_size.unwrap(),
+                    &url,
                 )?)
             }
             None => None,
@@ -146,20 +144,6 @@ impl FilePlan {
             None => None,
         };
 
-        let url: url::Url = match file.urls() {
-            Some(urls) if !urls.is_empty() => urls.first().unwrap().url(),
-            Some(_) => {
-                return Err(MetalinkDownloadError::Other(anyhow!(
-                    "File urls should not be empty"
-                )))
-            }
-            None => {
-                return Err(MetalinkDownloadError::Other(anyhow!(
-                    "Non-url based file defintions are not supported"
-                )))
-            }
-        };
-
         Ok(Self {
             target_file,
             url,
@@ -171,25 +155,23 @@ impl FilePlan {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ChunkMetaData {
-    pub start: u64,
-    pub end: u64,
-    pub checksum: Option<CheckSum>,
-    pub filename: PathBuf,
+pub(crate) struct ChunkMetaData {
+    pub(crate) start: u64,
+    pub(crate) end: u64,
+    pub(crate) checksum: Option<CheckSum>,
+    pub(crate) filename: PathBuf,
+    pub(crate) url: url::Url,
 }
 
 impl ChunkMetaData {
-    pub fn new(start: u64, end: u64, filename: PathBuf) -> Self {
+    pub fn new(start: u64, end: u64, filename: PathBuf, url: &url::Url) -> Self {
         Self {
             start,
             end,
             filename,
             checksum: None,
+            url: url.clone(),
         }
-    }
-
-    pub fn has_checksum(&self) -> bool {
-        self.checksum.is_some()
     }
 
     pub fn validate_checksum(&self, bytes: &bytes::Bytes) -> Option<bool> {
@@ -223,8 +205,9 @@ impl ChunkMetaData {
         pieces: &metalink::Pieces,
         filename: &Path,
         total_size: u64,
+        url: &url::Url,
     ) -> Result<Vec<ChunkMetaData>> {
-        let mut ranges = Self::calculate_ranges(total_size, pieces.length(), filename);
+        let mut ranges = Self::calculate_ranges(total_size, pieces.length(), filename, url);
 
         let hash_type = pieces.hash_type();
 
@@ -247,6 +230,7 @@ impl ChunkMetaData {
         total_size: u64,
         block_size: u64,
         filename: &Path,
+        url: &url::Url,
     ) -> Vec<ChunkMetaData> {
         let mut remaining_size = total_size;
         let mut current_pos = 0;
@@ -257,6 +241,7 @@ impl ChunkMetaData {
                 current_pos,
                 current_pos + block_size - 1,
                 filename.to_path_buf(),
+                &url,
             ));
             current_pos += block_size;
             remaining_size -= block_size;
@@ -265,6 +250,7 @@ impl ChunkMetaData {
             current_pos,
             current_pos + remaining_size - 1,
             filename.to_path_buf(),
+            &url,
         ));
 
         ranges
@@ -367,11 +353,12 @@ mod tests {
     #[test]
     fn calulate_ranges_handle_total_size_smaller_than_block_size() {
         let file: PathBuf = "/x".into();
-        let chunks = ChunkMetaData::calculate_ranges(5, 10, &file);
+        let url: url::Url = url::Url::parse("https://www.google.com").unwrap();
+        let chunks = ChunkMetaData::calculate_ranges(5, 10, &file, &url);
         assert_eq!(chunks.len(), 1);
         assert_eq!(
             chunks.first(),
-            Some(ChunkMetaData::new(0, 4, "/x".into())).as_ref()
+            Some(ChunkMetaData::new(0, 4, "/x".into(), &url)).as_ref()
         );
 
         assert_eq!(Some(5), chunks.first().map(|chunk| chunk.chunk_size()));
@@ -380,11 +367,12 @@ mod tests {
     #[test]
     fn calculate_ranges_handles_total_size_equal_block_size() {
         let file: PathBuf = "/x".into();
-        let chunks = ChunkMetaData::calculate_ranges(10, 10, &file);
+        let url: url::Url = url::Url::parse("https://www.google.com").unwrap();
+        let chunks = ChunkMetaData::calculate_ranges(10, 10, &file, &url);
         assert_eq!(chunks.len(), 1);
         assert_eq!(
             chunks.first(),
-            Some(ChunkMetaData::new(0, 9, "/x".into())).as_ref()
+            Some(ChunkMetaData::new(0, 9, "/x".into(), &url)).as_ref()
         );
         assert_eq!(Some(10), chunks.first().map(|chunk| chunk.chunk_size()));
     }
@@ -392,13 +380,14 @@ mod tests {
     #[test]
     fn calculate_ranges_handles_total_size_bigger_block_size() {
         let file: PathBuf = "/x".into();
-        let chunks = ChunkMetaData::calculate_ranges(15, 10, &file);
+        let url: url::Url = url::Url::parse("https://www.google.com").unwrap();
+        let chunks = ChunkMetaData::calculate_ranges(15, 10, &file, &url);
         assert_eq!(chunks.len(), 2);
         assert_eq!(
             chunks,
             vec![
-                ChunkMetaData::new(0, 9, "/x".into()),
-                ChunkMetaData::new(10, 14, "/x".into())
+                ChunkMetaData::new(0, 9, "/x".into(), &url),
+                ChunkMetaData::new(10, 14, "/x".into(), &url)
             ]
         );
         assert_eq!(10, chunks[0].chunk_size());
